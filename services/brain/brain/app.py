@@ -292,7 +292,7 @@ def stage_document(temp_path: Path):
     normalized = normalize_filename(temp_path.name)
     target = DOCS_STAGING / normalized
     temp_path.rename(target)
-    return target               
+    return target
 
 def _get_gateway_token_from_keychain() -> str:
     # Prefer LaunchAgent env var to avoid Keychain prompts hanging the service.
@@ -335,4 +335,3 @@ def gateway_fetch(req: GatewayFetchRequest):
             raise HTTPException(status_code=r.status_code, detail="Gateway error (non-JSON).")
 
     return r.json()
-

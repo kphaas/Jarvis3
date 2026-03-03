@@ -1,0 +1,6 @@
+role: gateway
+http:
+  host: 127.0.0.1
+  port: 8282
+brain:
+  base_url: http://100.64.166.22:8181

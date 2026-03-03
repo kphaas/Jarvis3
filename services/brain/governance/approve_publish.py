@@ -33,7 +33,7 @@ def approve_manifest(manifest_path: str, approved_by: str) -> dict:
         return manifest
 
     if status != "pending":
-        raise GovernanceError(f"Manifest not pending: {status}")    
+        raise GovernanceError(f"Manifest not pending: {status}")
 
     pending_path = Path(manifest["pending_path"]).expanduser().resolve()
     if not pending_path.exists():

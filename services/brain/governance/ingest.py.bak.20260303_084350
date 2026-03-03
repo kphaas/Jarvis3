@@ -144,7 +144,7 @@ def ingest(source_path: str, source_label: str, version: int) -> dict:
     # Sidecar metadata
     rules = policy.rules[classification]
     meta = {
-    "policy_version": policy.policy_version,        
+    "policy_version": policy.policy_version,
     "classification": classification,
         "top_folder": cinfo["top_folder"],
         "original_source_path": str(abs_src),
@@ -168,7 +168,7 @@ def ingest(source_path: str, source_label: str, version: int) -> dict:
     # Audit event
     audit({
         "event": "ingest",
-    "policy_version": policy.policy_version,        
+    "policy_version": policy.policy_version,
     "classification": classification,
         "source_path": str(abs_src),
         "staged_path": str(staged_path_resolved),

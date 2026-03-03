@@ -1,0 +1,6 @@
+role: endpoint
+http:
+  host: 127.0.0.1
+  port: 8383
+brain:
+  base_url: http://100.64.166.22:8181

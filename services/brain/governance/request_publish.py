@@ -76,7 +76,7 @@ def request_publish(staged_path: str, requested_by: str, note: str = "") -> dict
         shutil.copy2(staged, pending_path)
 
     # Manifest name is deterministic and unique-ish
-    policy_version = meta.get("policy_version", "unknown")   
+    policy_version = meta.get("policy_version", "unknown")
     manifest_id = f"{staged.stem}__{meta.get('sha256','')[:12]}"
     manifest_path = canonical(QUEUE / "manifests" / f"{manifest_id}.publish.json")
 
@@ -91,7 +91,7 @@ def request_publish(staged_path: str, requested_by: str, note: str = "") -> dict
 
     manifest = {
         "id": manifest_id,
-        "policy_version": policy_version,        
+        "policy_version": policy_version,
     "requested_at": datetime.now(timezone.utc).isoformat(),
         "requested_by": requested_by,
         "note": note,

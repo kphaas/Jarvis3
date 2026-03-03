@@ -31,7 +31,7 @@ def load_policy() -> Policy:
     return Policy(
         policy_version=raw.get("policy_version", "unknown"),
         source_root_ro=Path(raw["source_root_ro"]).expanduser().resolve(),
-        publish_root_ro=Path(raw["publish_root_ro"]).expanduser().resolve(),
+        publish_root_ro=Path(raw.get("publish_root_ro", raw.get("publish", {}).get("allowed_publish_roots", [""])[0] or "")).expanduser().resolve(),
         classification_map=raw["classification_map"],
         rules=raw["rules"],
     )
@@ -144,7 +144,7 @@ def ingest(source_path: str, source_label: str, version: int) -> dict:
     # Sidecar metadata
     rules = policy.rules[classification]
     meta = {
-    "policy_version": policy.policy_version,        
+    "policy_version": policy.policy_version,
     "classification": classification,
         "top_folder": cinfo["top_folder"],
         "original_source_path": str(abs_src),
@@ -168,7 +168,7 @@ def ingest(source_path: str, source_label: str, version: int) -> dict:
     # Audit event
     audit({
         "event": "ingest",
-    "policy_version": policy.policy_version,        
+    "policy_version": policy.policy_version,
     "classification": classification,
         "source_path": str(abs_src),
         "staged_path": str(staged_path_resolved),

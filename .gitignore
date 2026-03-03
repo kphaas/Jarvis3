@@ -37,3 +37,16 @@ secrets.*
 # Terraform / IaC (if you ever add it)
 .terraform/
 terraform.tfstate*
+
+# Local configs/secrets
+config.local.*
+*.local.*
+secrets.*
+*.secrets.*
+*.token
+*.tokens
+*.sqlite
+*.db
+
+# OS / tooling
+*.swp

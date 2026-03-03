@@ -1,0 +1,7 @@
+role: brain
+http:
+  host: 127.0.0.1
+  port: 8181
+paths:
+  documents_ro: /Volumes/Documents
+  vault_rw: /Volumes/JarvisSecure
