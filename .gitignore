@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.env
+.env.*
+*.log
+
+# macOS
+.DS_Store
+
+# Secrets / keys
+*.pem
+*.key
+*.crt
+id_rsa
+id_ed25519
+*.p12
+
+# Tooling
+.idea/
+.vscode/

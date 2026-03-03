@@ -1,0 +1,5 @@
+#!/bin/zsh
+set -euo pipefail
+TOKEN="$(cat ~/.jarvis/gateway_token)"
+curl -sS http://100.112.63.25:8282/health -H "x-jarvis-token: $TOKEN"
+echo

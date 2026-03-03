@@ -1,0 +1,27 @@
+#!/bin/zsh
+set -euo pipefail
+
+if [ $# -lt 1 ]; then
+  echo "usage: gfetch <url>" >&2
+  exit 2
+fi
+
+TOKEN="$(cat ~/.jarvis/gateway_token)"
+
+BODY="$(python3 - "$1" <<'PY'
+import json, sys
+print(json.dumps({"url": sys.argv[1]}))
+PY
+)"
+
+RESP="$(curl -sS --fail-with-body --max-time 20 \
+  http://100.112.63.25:8282/fetch \
+  -H "Content-Type: application/json" \
+  -H "x-jarvis-token: $TOKEN" \
+  -d "$BODY" || true)"
+
+# Pretty-print if it's JSON
+python3 - <<'PY' "$RESP" 2>/dev/null || echo "$RESP"
+import json, sys
+print(json.dumps(json.loads(sys.argv[1]), indent=2))
+PY
