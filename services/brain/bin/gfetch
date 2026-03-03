@@ -6,7 +6,7 @@ if [ $# -lt 1 ]; then
   exit 2
 fi
 
-TOKEN="$(cat ~/.jarvis/gateway_token)"
+TOKEN="$(security find-generic-password -a token -s jarvis.gateway.v1 -w)"
 
 BODY="$(python3 - "$1" <<'PY'
 import json, sys

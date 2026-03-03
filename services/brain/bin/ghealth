@@ -1,5 +1,5 @@
 #!/bin/zsh
 set -euo pipefail
-TOKEN="$(cat ~/.jarvis/gateway_token)"
+TOKEN="$(security find-generic-password -a token -s jarvis.gateway.v1 -w)"
 curl -sS http://100.112.63.25:8282/health -H "x-jarvis-token: $TOKEN"
 echo
