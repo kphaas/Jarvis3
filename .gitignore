@@ -23,3 +23,17 @@ id_ed25519
 # Tooling
 .idea/
 .vscode/
+
+# Local configs & secrets
+config.local.*
+*.local.*
+secrets.*
+*.secrets.*
+*.token
+*.tokens
+*.sqlite
+*.db
+
+# Terraform / IaC (if you ever add it)
+.terraform/
+terraform.tfstate*
