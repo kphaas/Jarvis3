@@ -302,7 +302,7 @@ def _get_gateway_token_from_keychain() -> str:
 
     import subprocess
     t = subprocess.check_output(
-        ["security","find-generic-password","-a","token","-s","jarvis.gateway","-w"],
+        ["security","find-generic-password","-a","token","-s","jarvis.gateway.v1","-w"],
         text=True
     ).strip()
     return t
