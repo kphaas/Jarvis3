@@ -390,3 +390,103 @@ def health_full():
     overall = "ok" if all(v.get("status") == "ok" for v in results.values()) else "degraded"
 
     return {"status": overall, "ts": ts, "subsystems": results}
+
+# -----------------------------
+# Dashboard UI
+# -----------------------------
+
+from fastapi.responses import HTMLResponse
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard():
+    return """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="refresh" content="15">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jarvis Dashboard</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0a; color: #e0e0e0; font-family: 'Courier New', monospace; padding: 20px; }
+  h1 { color: #00ff88; font-size: 28px; margin-bottom: 4px; letter-spacing: 2px; }
+  .subtitle { color: #555; font-size: 12px; margin-bottom: 30px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .card { background: #111; border: 1px solid #222; border-radius: 8px; padding: 20px; }
+  .card.ok { border-left: 4px solid #00ff88; }
+  .card.error { border-left: 4px solid #ff4444; }
+  .card.degraded { border-left: 4px solid #ffaa00; }
+  .card-title { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .card-status { font-size: 22px; font-weight: bold; }
+  .card-status.ok { color: #00ff88; }
+  .card-status.error { color: #ff4444; }
+  .card-status.degraded { color: #ffaa00; }
+  .card-detail { font-size: 11px; color: #555; margin-top: 6px; }
+  .overall { background: #111; border-radius: 8px; padding: 20px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; }
+  .overall-status { font-size: 32px; font-weight: bold; }
+  .overall-status.ok { color: #00ff88; }
+  .overall-status.degraded { color: #ffaa00; }
+  .ts { font-size: 11px; color: #444; }
+  .refresh-note { font-size: 10px; color: #333; text-align: right; margin-top: 16px; }
+</style>
+</head>
+<body>
+<h1>⚡ JARVIS</h1>
+<div class="subtitle">System Dashboard — auto-refreshes every 15s</div>
+
+<div id="overall" class="overall">
+  <div>
+    <div class="card-title">Overall Status</div>
+    <div id="overall-status" class="overall-status">Loading...</div>
+  </div>
+  <div id="overall-ts" class="ts"></div>
+</div>
+
+<div id="grid" class="grid"></div>
+<div class="refresh-note">Next refresh in <span id="countdown">15</span>s</div>
+
+<script>
+const ICONS = { brain: "🧠", gateway: "🌐", unraid_mount: "💾", staging: "📁", logs: "📋" };
+
+async function fetchHealth() {
+  try {
+    const res = await fetch("/v1/health/full");
+    const data = await res.json();
+
+    const os = document.getElementById("overall-status");
+    os.textContent = data.status.toUpperCase();
+    os.className = "overall-status " + data.status;
+    document.getElementById("overall-ts").textContent = data.ts;
+
+    const grid = document.getElementById("grid");
+    grid.innerHTML = "";
+    for (const [key, val] of Object.entries(data.subsystems)) {
+      const status = val.status || "error";
+      const icon = ICONS[key] || "🔧";
+      const detail = val.path || val.detail || val.size_bytes && (val.size_bytes + " bytes") || "";
+      grid.innerHTML += `
+        <div class="card ${status}">
+          <div class="card-title">${icon} ${key.replace(/_/g, " ").toUpperCase()}</div>
+          <div class="card-status ${status}">${status.toUpperCase()}</div>
+          <div class="card-detail">${detail}</div>
+        </div>`;
+    }
+  } catch(e) {
+    document.getElementById("overall-status").textContent = "UNREACHABLE";
+    document.getElementById("overall-status").className = "overall-status error";
+  }
+}
+
+fetchHealth();
+
+let count = 15;
+setInterval(() => {
+  count--;
+  document.getElementById("countdown").textContent = count;
+  if (count <= 0) count = 15;
+}, 1000);
+</script>
+</body>
+</html>
+"""
