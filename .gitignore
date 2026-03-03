@@ -50,3 +50,7 @@ secrets.*
 
 # OS / tooling
 *.swp
+
+# Local scratch/backup artifacts
+*.bak.*
+*.broken.*
