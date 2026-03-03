@@ -335,3 +335,58 @@ def gateway_fetch(req: GatewayFetchRequest):
             raise HTTPException(status_code=r.status_code, detail="Gateway error (non-JSON).")
 
     return r.json()
+
+# -----------------------------
+# Full Health Check
+# -----------------------------
+
+@app.get("/v1/health/full")
+def health_full():
+    results = {}
+    ts = datetime.utcnow().isoformat()
+
+    results["brain"] = {"status": "ok", "ts": ts}
+
+    try:
+        gateway_token = subprocess.run(
+            ["security", "find-generic-password", "-s", "jarvis.gateway.v1", "-a", "token", "-w"],
+            capture_output=True, text=True, timeout=5
+        ).stdout.strip()
+        import requests as req
+        r = req.get("http://100.112.63.25:8282/health",
+                    headers={"x-jarvis-token": gateway_token},
+                    timeout=5)
+        results["gateway"] = r.json()
+    except Exception as e:
+        results["gateway"] = {"status": "error", "detail": str(e)}
+
+    try:
+        mount_path = Path(os.path.expanduser("~/jarvis_mounts/Documents"))
+        results["unraid_mount"] = {
+            "status": "ok" if mount_path.exists() and any(mount_path.iterdir()) else "empty",
+            "path": str(mount_path)
+        }
+    except Exception as e:
+        results["unraid_mount"] = {"status": "error", "detail": str(e)}
+
+    try:
+        staging_path = Path(os.path.expanduser("~/jarvis_staging"))
+        results["staging"] = {
+            "status": "ok" if staging_path.exists() else "missing",
+            "path": str(staging_path)
+        }
+    except Exception as e:
+        results["staging"] = {"status": "error", "detail": str(e)}
+
+    try:
+        log_path = Path(os.path.expanduser("~/jarvis/logs/brain.log"))
+        results["logs"] = {
+            "status": "ok" if log_path.exists() else "missing",
+            "size_bytes": log_path.stat().st_size if log_path.exists() else 0
+        }
+    except Exception as e:
+        results["logs"] = {"status": "error", "detail": str(e)}
+
+    overall = "ok" if all(v.get("status") == "ok" for v in results.values()) else "degraded"
+
+    return {"status": overall, "ts": ts, "subsystems": results}
