@@ -513,3 +513,46 @@ setInterval(() => {
 </body>
 </html>
 """
+
+
+from router import route
+
+class AskRequest(BaseModel):
+    intent: str
+    complexity: int = 3
+
+@app.post("/v1/ask")
+async def ask(req: AskRequest):
+    routing = await route(req.intent, req.complexity)
+    target  = routing["target"]
+
+    if target == "qwen":
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                "http://localhost:11434/api/generate",
+                json={"model": "qwen2.5-coder:7b", "prompt": req.intent, "stream": False},
+                timeout=60
+            )
+        text     = r.json()["response"]
+        provider = "local/qwen"
+
+    elif target == "llama":
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                "http://localhost:11434/api/generate",
+                json={"model": "llama3.1:8b", "prompt": req.intent, "stream": False},
+                timeout=60
+            )
+        text     = r.json()["response"]
+        provider = "local/llama"
+
+    else:
+        text     = f"[ROUTING TO {target.upper()}] — cloud integration coming in Phase 2b"
+        provider = f"cloud/{target} (pending)"
+
+    return {
+        "response": text,
+        "provider": provider,
+        "routing":  routing,
+        "intent":   req.intent
+    }
