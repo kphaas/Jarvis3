@@ -199,3 +199,6 @@ def fetch(req: FetchRequest, request: Request, _auth=Depends(require_jarvis_toke
 	},
     )
 
+
+from services.gateway.app.cloud import router as cloud_router
+app.include_router(cloud_router)
