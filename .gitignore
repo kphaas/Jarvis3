@@ -54,3 +54,5 @@ secrets.*
 # Local scratch/backup artifacts
 *.bak.*
 *.broken.*
+jarvis_staging/
+.secrets
