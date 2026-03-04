@@ -21,7 +21,11 @@ fi
 
 TOKEN="$(security find-generic-password -a token -s jarvis.gateway.v1 -w 2>/dev/null || true)"
 if [[ -z "${TOKEN}" ]]; then
-  echo "ERROR: jarvis.gateway.v1 token not found in Keychain" >&2
+  echo "Keychain locked, falling back to .secrets file"
+  TOKEN="$(grep '^GATEWAY_TOKEN=' /Users/infranet/jarvis/.secrets | cut -d= -f2 || true)"
+fi
+if [[ -z "${TOKEN}" ]]; then
+  echo "ERROR: No gateway token found" >&2
   exit 2
 fi
 export JARVIS_GATEWAY_TOKEN="$TOKEN"
