@@ -626,3 +626,6 @@ async def scrape_and_summarize(req: ScrapeRequest):
         "target":    target["name"],
         "intent":    req.intent
     }
+
+from brain.costs import router as costs_router
+app.include_router(costs_router)

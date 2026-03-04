@@ -82,3 +82,11 @@ async def route(intent: str, complexity: int = 3) -> dict:
     if result:
         return result
     return await llama_route(intent)
+
+from brain.cloud_client import ask_cloud
+
+async def route_to_cloud(intent: str, complexity: int) -> dict:
+    if complexity >= 4:
+        return await ask_cloud("claude", intent)
+    else:
+        return await ask_cloud("perplexity", intent)
