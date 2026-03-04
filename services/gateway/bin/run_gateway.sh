@@ -1,7 +1,6 @@
 #!/bin/zsh
 set -euo pipefail
 
-# Wait for Tailscale to be ready (max 60 seconds)
 echo "Waiting for Tailscale..."
 for i in {1..30}; do
   TS_IP=$(tailscale ip -4 2>/dev/null || true)
