@@ -410,6 +410,72 @@ def health_full():
         results["ollama_llama"] = {"status": "error", "detail": str(e)}
         results["ollama_qwen"]  = {"status": "error", "detail": str(e)}
 
+    try:
+        import asyncio as _asyncio
+        import asyncpg as _asyncpg
+        _conn = _asyncio.run(_asyncpg.connect("postgresql://jarvis:jarvisdb@localhost:5432/jarvis"))
+        _today   = _asyncio.run(_conn.fetchrow("SELECT COALESCE(SUM(cost_usd),0) as spent FROM cloud_costs WHERE DATE(ts)=CURRENT_DATE"))
+        _week    = _asyncio.run(_conn.fetchrow("SELECT COALESCE(SUM(cost_usd),0) as spent FROM cloud_costs WHERE DATE_TRUNC('week',ts)=DATE_TRUNC('week',NOW())"))
+        _month   = _asyncio.run(_conn.fetchrow("SELECT COALESCE(SUM(cost_usd),0) as spent FROM cloud_costs WHERE DATE_TRUNC('month',ts)=DATE_TRUNC('month',NOW())"))
+        _limits  = _asyncio.run(_conn.fetch("SELECT period, limit_usd FROM budget_config"))
+        _asyncio.run(_conn.close())
+        _lmap = {r["period"]: float(r["limit_usd"]) for r in _limits}
+        _ds = float(_today["spent"]); _ws = float(_week["spent"]); _ms = float(_month["spent"])
+        _alerts = []
+        for _p, _s, _l in [("daily",_ds,_lmap.get("daily",1)),("weekly",_ws,_lmap.get("weekly",5)),("monthly",_ms,_lmap.get("monthly",20))]:
+            _pct = _s/_l*100 if _l else 0
+            if _pct >= 90: _alerts.append(f"CRITICAL: {_p} {_pct:.1f}% used")
+            elif _pct >= 75: _alerts.append(f"WARNING: {_p} {_pct:.1f}% used")
+        results["costs"] = {
+            "status": "critical" if any("CRITICAL" in a for a in _alerts) else "warning" if _alerts else "ok",
+            "alerts": _alerts,
+            "today_usd":   round(_ds, 6),
+            "week_usd":    round(_ws, 6),
+            "month_usd":   round(_ms, 6),
+            "today_limit":   _lmap.get("daily", 1.00),
+            "week_limit":    _lmap.get("weekly", 5.00),
+            "month_limit":   _lmap.get("monthly", 20.00),
+            "today_remaining":   round(max(0, _lmap.get("daily",1) - _ds), 6),
+            "week_remaining":    round(max(0, _lmap.get("weekly",5) - _ws), 6),
+            "month_remaining":   round(max(0, _lmap.get("monthly",20) - _ms), 6),
+        }
+    except Exception as e:
+        results["costs"] = {"status": "error", "detail": str(e)}
+
+    try:
+        import psycopg2
+        _conn = psycopg2.connect("postgresql://jarvis:jarvisdb@localhost:5432/jarvis")
+        _cur = _conn.cursor()
+        _cur.execute("SELECT COALESCE(SUM(cost_usd),0) FROM cloud_costs WHERE DATE(ts)=CURRENT_DATE")
+        _ds = float(_cur.fetchone()[0])
+        _cur.execute("SELECT COALESCE(SUM(cost_usd),0) FROM cloud_costs WHERE DATE_TRUNC('week',ts)=DATE_TRUNC('week',NOW())")
+        _ws = float(_cur.fetchone()[0])
+        _cur.execute("SELECT COALESCE(SUM(cost_usd),0) FROM cloud_costs WHERE DATE_TRUNC('month',ts)=DATE_TRUNC('month',NOW())")
+        _ms = float(_cur.fetchone()[0])
+        _cur.execute("SELECT period, limit_usd FROM budget_config")
+        _lmap = {r[0]: float(r[1]) for r in _cur.fetchall()}
+        _conn.close()
+        _alerts = []
+        for _p, _s, _l in [("daily",_ds,_lmap.get("daily",1)),("weekly",_ws,_lmap.get("weekly",5)),("monthly",_ms,_lmap.get("monthly",20))]:
+            _pct = _s/_l*100 if _l else 0
+            if _pct >= 90: _alerts.append(f"CRITICAL: {_p} {_pct:.1f}% used")
+            elif _pct >= 75: _alerts.append(f"WARNING: {_p} {_pct:.1f}% used")
+        results["costs"] = {
+            "status": "critical" if any("CRITICAL" in a for a in _alerts) else "warning" if _alerts else "ok",
+            "alerts": _alerts,
+            "today_usd":         round(_ds, 6),
+            "week_usd":          round(_ws, 6),
+            "month_usd":         round(_ms, 6),
+            "today_limit":       _lmap.get("daily", 1.00),
+            "week_limit":        _lmap.get("weekly", 5.00),
+            "month_limit":       _lmap.get("monthly", 20.00),
+            "today_remaining":   round(max(0, _lmap.get("daily",1.00) - _ds), 6),
+            "week_remaining":    round(max(0, _lmap.get("weekly",5.00) - _ws), 6),
+            "month_remaining":   round(max(0, _lmap.get("monthly",20.00) - _ms), 6),
+        }
+    except Exception as e:
+        results["costs"] = {"status": "error", "detail": str(e)}
+
     overall = "ok" if all(v.get("status") == "ok" for v in results.values()) else "degraded"
 
     return {"status": overall, "ts": ts, "subsystems": results}

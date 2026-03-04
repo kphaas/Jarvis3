@@ -1,6 +1,6 @@
 import httpx
 import subprocess
-from brain.cost_logger import log_cost
+from brain.cost_logger import log_cost, is_allowed
 
 GATEWAY_URL = "http://100.112.63.25:8282"
 
@@ -14,6 +14,10 @@ def get_secret(service: str, account: str) -> str:
 GATEWAY_TOKEN = get_secret("jarvis.gateway.v1", "token")
 
 async def ask_cloud(provider: str, prompt: str, model: str = None, max_tokens: int = 1024, intent: str = "") -> dict:
+    allowed, reason = await is_allowed()
+    if not allowed:
+        return {"response": f"[BUDGET LIMIT] {reason}", "provider": f"blocked/{provider}", "usage": {}}
+
     payload = {"provider": provider, "prompt": prompt, "max_tokens": max_tokens}
     if model:
         payload["model"] = model
