@@ -12,6 +12,16 @@ import httpx
 
 app = FastAPI(title="Jarvis Gateway")
 
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://100.87.223.31:4000", "http://localhost:4000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 MAX_BYTES = 3 * 1024 * 1024   # 3 MB
 TIMEOUT_S = 10.0
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
@@ -199,6 +209,12 @@ def fetch(req: FetchRequest, request: Request, _auth=Depends(require_jarvis_toke
 	},
     )
 
+
+
+@app.get("/v1/metrics")
+def gateway_metrics():
+    from services.gateway.app.gateway_metrics import get_metrics
+    return get_metrics()
 
 from services.gateway.app.cloud import router as cloud_router
 app.include_router(cloud_router)
