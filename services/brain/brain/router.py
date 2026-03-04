@@ -9,10 +9,19 @@ CODE_KEYWORDS = {
     "python", "javascript", "bash", "sql", "dockerfile", "regex"
 }
 
-WEB_KEYWORDS = {
-    "weather", "news", "today", "current", "latest", "now",
-    "search", "who is", "what is", "price", "stock", "score",
-    "happening", "recently", "this week", "2024", "2025", "2026"
+SCRAPE_KEYWORDS = {
+    "weather", "forecast", "temperature", "rain", "sunny",
+    "score", "news", "headlines", "latest", "today",
+    "stocks", "market", "nasdaq", "dow", "s&p",
+    "uga", "dawgs", "bulldogs", "soccer", "fifa",
+    "atlanta", "alpharetta", "johns creek", "roswell",
+    "college football", "cfb", "olympics", "unraid",
+    "events", "things to do", "weekend"
+}
+
+SEARCH_KEYWORDS = {
+    "who is", "what is", "search", "find", "lookup",
+    "tell me about", "research"
 }
 
 def rule_route(intent: str, complexity: int) -> dict | None:
@@ -22,8 +31,14 @@ def rule_route(intent: str, complexity: int) -> dict | None:
     if tokens & CODE_KEYWORDS or any(k in lower for k in CODE_KEYWORDS):
         return {"target": "qwen", "reason": "code_keyword_match"}
 
-    if any(k in lower for k in WEB_KEYWORDS):
-        return {"target": "perplexity", "reason": "web_keyword_match"}
+    if complexity <= 2:
+        return {"target": "llama", "reason": "low_complexity"}
+
+    if any(k in lower for k in SCRAPE_KEYWORDS):
+        return {"target": "scrape", "reason": "scrape_keyword_match"}
+
+    if any(k in lower for k in SEARCH_KEYWORDS):
+        return {"target": "perplexity", "reason": "search_keyword_match"}
 
     if complexity <= 3:
         return {"target": "llama", "reason": "low_complexity"}
@@ -36,7 +51,7 @@ Given a user query, respond with ONLY a JSON object:
 {"target": "perplexity" or "claude" or "llama", "reason": "one sentence"}
 
 Rules:
-- perplexity: needs live web data, current events, real-time info
+- perplexity: needs live search, person lookup, obscure facts
 - claude: needs deep reasoning, long analysis, creative writing, complex planning
 - llama: can be answered from training data, simple factual, conversational
 

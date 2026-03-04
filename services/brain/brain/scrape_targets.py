@@ -1,13 +1,13 @@
 SCRAPE_TARGETS = {
     "weather": {
-        "url": "https://wttr.in/Atlanta?format=3",
-        "keywords": ["weather", "forecast", "temperature", "rain", "sunny", "cold", "hot", "humid"],
-        "prompt": "Summarize this weather report in 2 sentences:"
+        "url": "https://api.open-meteo.com/v1/forecast?latitude=33.749&longitude=-84.388&current_weather=true&hourly=temperature_2m,precipitation_probability,weathercode&forecast_days=1&temperature_unit=fahrenheit&windspeed_unit=mph",
+        "keywords": ["weather", "temperature", "rain", "sunny", "cold", "hot", "humid", "outside"],
+        "prompt": "Summarize this weather data for Atlanta in 2 friendly sentences. Convert celsius to fahrenheit if needed:"
     },
     "weather_full": {
-        "url": "https://wttr.in/Atlanta?format=4",
-        "keywords": ["5 day forecast", "week forecast", "weather this week"],
-        "prompt": "Summarize this 5-day forecast in 3 sentences:"
+        "url": "https://api.open-meteo.com/v1/forecast?latitude=33.749&longitude=-84.388&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&forecast_days=7&temperature_unit=fahrenheit&windspeed_unit=mph",
+        "keywords": ["5 day forecast", "week forecast", "weather this week", "weather forecast"],
+        "prompt": "Summarize this 7-day Atlanta weather forecast in 3 friendly sentences:"
     },
     "uga_football": {
         "url": "https://www.espn.com/college-football/team/schedule/_/id/61",
@@ -41,7 +41,7 @@ SCRAPE_TARGETS = {
     },
     "world_news": {
         "url": "https://feeds.reuters.com/reuters/topNews",
-        "keywords": ["world news", "international", "global news", "breaking news"],
+        "keywords": ["world news", "international", "global news", "breaking news", "news", "latest news", "headlines", "latest", "current events"],
         "prompt": "Summarize the top world news headlines in 3 sentences:"
     },
     "politics": {

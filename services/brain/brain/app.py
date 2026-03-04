@@ -546,6 +546,34 @@ async def ask(req: AskRequest):
         text     = r.json()["response"]
         provider = "local/llama"
 
+    elif target == "scrape":
+        scrape_target = find_scrape_target(req.intent)
+        if scrape_target:
+            token = _get_gateway_token_from_keychain()
+            try:
+                async with httpx.AsyncClient(timeout=15) as client:
+                    r = await client.post(
+                        f"{GATEWAY_BASE}/fetch",
+                        json={"url": scrape_target["url"]},
+                        headers={"X-Jarvis-Token": token}
+                    )
+                scraped = r.json().get("text_excerpt", "")
+                prompt  = f"{scrape_target['prompt']}\n\n{scraped[:3000]}"
+                async with httpx.AsyncClient() as client:
+                    r = await client.post(
+                        "http://localhost:11434/api/generate",
+                        json={"model": "llama3.1:8b", "prompt": prompt, "stream": False},
+                        timeout=60
+                    )
+                text     = r.json()["response"]
+                provider = f"local/llama+scrape({scrape_target['name']})"
+            except Exception as e:
+                text     = f"Scrape failed: {e}"
+                provider = "scrape/error"
+        else:
+            text     = "No scrape target found"
+            provider = "scrape/miss"
+
     else:
         text     = f"[ROUTING TO {target.upper()}] — cloud integration coming in Phase 2b"
         provider = f"cloud/{target} (pending)"
@@ -555,4 +583,46 @@ async def ask(req: AskRequest):
         "provider": provider,
         "routing":  routing,
         "intent":   req.intent
+    }
+
+
+from scrape_targets import find_scrape_target
+
+class ScrapeRequest(BaseModel):
+    intent: str
+    complexity: int = 3
+
+@app.post("/v1/scrape")
+async def scrape_and_summarize(req: ScrapeRequest):
+    target = find_scrape_target(req.intent)
+    if not target:
+        return {"error": "no scrape target found", "intent": req.intent}
+
+    token = _get_gateway_token_from_keychain()
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(
+                f"{GATEWAY_BASE}/fetch",
+                json={"url": target["url"]},
+                headers={"X-Jarvis-Token": token}
+            )
+        scraped = r.json().get("text_excerpt", "")
+    except Exception as e:
+        return {"error": f"scrape failed: {e}", "intent": req.intent}
+
+    prompt = f"{target['prompt']}\n\n{scraped[:3000]}"
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            "http://localhost:11434/api/generate",
+            json={"model": "llama3.1:8b", "prompt": prompt, "stream": False},
+            timeout=60
+        )
+    summary = r.json()["response"]
+
+    return {
+        "response":  summary,
+        "provider":  "local/llama+scrape",
+        "source":    target["url"],
+        "target":    target["name"],
+        "intent":    req.intent
     }
