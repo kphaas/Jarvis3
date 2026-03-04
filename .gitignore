@@ -55,3 +55,4 @@ secrets.*
 *.bak.*
 *.broken.*
 jarvis_staging/
+.secrets
