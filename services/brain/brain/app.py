@@ -829,5 +829,182 @@ async def scrape_and_summarize(req: ScrapeRequest):
         "intent":    req.intent
     }
 
+
+
+import asyncpg
+from datetime import timezone
+from brain.code_writer import generate_with_qwen, generate_with_claude, fix_with_qwen, _inject_header
+from brain.staging import write_staged, validate_syntax, validate_lint, validate_security, format_code, promote, cleanup, is_allowed_path
+from brain.git_client import get_or_create_branch, stage_and_commit, push_branch, return_to_main
+from brain.rate_limiter import RateLimiter
+import logging
+logger = logging.getLogger("jarvis.app")
+
+code_write_limiter = RateLimiter(max_calls=10, window_seconds=3600)
+
+
+class CodeWriteRequest(BaseModel):
+    intent: str
+    target_file: str
+    context: str = ""
+    branch_hint: str = "codegen"
+
+
+@app.post("/v1/code/write")
+async def code_write(req: CodeWriteRequest):
+    from fastapi import Request
+    import httpx
+
+    if not code_write_limiter.allow():
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit: max 10 code writes/hour. Remaining: {code_write_limiter.remaining()}"
+        )
+
+    if not is_allowed_path(req.target_file):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Target path not in allowed write paths: {req.target_file}"
+        )
+
+    escalated = False
+    error = None
+    commit_hash = None
+    diff = None
+    branch = None
+    syntax_ok = False
+    lint_ok = False
+    security_ok = False
+
+    try:
+        gen = await generate_with_qwen(req.intent, req.context)
+
+        if not gen["ok"]:
+            from brain.cloud_client import ask_cloud
+            gen = await generate_with_claude(req.intent, req.context, ask_cloud)
+            escalated = True
+
+        if not gen["ok"]:
+            raise ValueError(f"Generation failed: {gen.get('error')}")
+
+        code = gen["code"]
+        filename = Path(req.target_file).expanduser().name
+        staged = write_staged(filename, code)
+
+        fmt = format_code(staged)
+        if not fmt["ok"]:
+            cleanup(staged)
+            raise ValueError(f"Formatting failed: {fmt['error']}")
+
+        syn = validate_syntax(staged)
+        syntax_ok = syn["ok"]
+        if not syn["ok"]:
+            cleanup(staged)
+            raise ValueError(f"Syntax error: {syn['error']}")
+
+        lint = validate_lint(staged)
+        lint_ok = lint["ok"]
+        if not lint["ok"]:
+            fix = await fix_with_qwen(staged.read_text(), lint["error"], req.intent)
+            if not fix["ok"]:
+                cleanup(staged)
+                raise ValueError(f"Lint error (unfixable): {lint['error']}")
+            staged.write_text(fix["code"], encoding="utf-8")
+            lint2 = validate_lint(staged)
+            if not lint2["ok"]:
+                cleanup(staged)
+                raise ValueError(f"Lint error (after self-correction): {lint2['error']}")
+            lint_ok = True
+            logger.info("Qwen self-correction succeeded")
+
+        sec = validate_security(staged)
+        security_ok = sec["ok"]
+        if not sec["ok"]:
+            cleanup(staged)
+            raise ValueError(f"Security error: {sec['error']}")
+
+        timestamp = datetime.now(timezone.utc).isoformat()
+        validation_summary = f"syntax ✓ | lint ✓ | bandit ✓"
+        final_code = _inject_header(staged.read_text(), req.intent, timestamp, validation_summary)
+        staged.write_text(final_code, encoding="utf-8")
+
+        branch_result = get_or_create_branch(req.branch_hint)
+        if not branch_result["ok"]:
+            cleanup(staged)
+            raise ValueError(f"Git branch error: {branch_result['error']}")
+        branch = branch_result["branch"]
+
+        promoted = promote(staged, req.target_file)
+        cleanup(staged)
+
+        commit_result = stage_and_commit(
+            str(promoted),
+            f"jarvis: {req.intent[:72]}"
+        )
+        if not commit_result["ok"]:
+            raise ValueError(f"Git commit error: {commit_result['error']}")
+
+        commit_hash = commit_result["commit_hash"]
+        diff = commit_result["diff"]
+
+        push_branch(branch)
+        return_to_main()
+
+        try:
+            conn = await asyncpg.connect(
+                host="localhost", port=5432,
+                user="jarvis", password="jarvisdb", database="jarvis"
+            )
+            await conn.execute(
+                """INSERT INTO code_write_log
+                   (intent, target_file, branch, commit_hash, escalated, success,
+                    code_len, validation_syntax, validation_lint, validation_security)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)""",
+                req.intent, req.target_file, branch, commit_hash,
+                escalated, True, len(code),
+                syntax_ok, lint_ok, security_ok
+            )
+            await conn.close()
+        except Exception as log_err:
+            pass
+
+        return {
+            "ok": True,
+            "commit_hash": commit_hash,
+            "branch": branch,
+            "escalated": escalated,
+            "diff": diff,
+            "lines_written": len(code.splitlines()),
+            "validation": {
+                "syntax": syntax_ok,
+                "lint": lint_ok,
+                "security": security_ok,
+            }
+        }
+
+    except Exception as e:
+        error = str(e)
+        return_to_main()
+
+        try:
+            conn = await asyncpg.connect(
+                host="localhost", port=5432,
+                user="jarvis", password="jarvisdb", database="jarvis"
+            )
+            await conn.execute(
+                """INSERT INTO code_write_log
+                   (intent, target_file, branch, escalated, success, error,
+                    validation_syntax, validation_lint, validation_security)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)""",
+                req.intent, req.target_file, branch,
+                escalated, False, error,
+                syntax_ok, lint_ok, security_ok
+            )
+            await conn.close()
+        except Exception:
+            pass
+
+        raise HTTPException(status_code=500, detail=error)
+
 from brain.costs import router as costs_router
 app.include_router(costs_router)
