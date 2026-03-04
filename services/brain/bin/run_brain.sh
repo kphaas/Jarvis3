@@ -1,14 +1,26 @@
 #!/bin/zsh
 set -euo pipefail
 
-# Mount Documents (read-only)
+echo "Waiting for Tailscale..."
+for i in {1..30}; do
+  TS_IP=$(tailscale ip -4 2>/dev/null || true)
+  if [[ "$TS_IP" == "100.64.166.22" ]]; then
+    echo "Tailscale ready: $TS_IP"
+    break
+  fi
+  echo "Attempt $i: Tailscale not ready yet, waiting 2s..."
+  sleep 2
+done
+
+if [[ "$TS_IP" != "100.64.166.22" ]]; then
+  echo "ERROR: Tailscale never came up" >&2
+  exit 1
+fi
+
 "$HOME/jarvis/bin/mount_docs.sh" 2>/dev/null || true
 
-# Gateway token from Keychain
 TOKEN="$(security find-generic-password -a token -s jarvis.gateway.v1 -w)"
 export JARVIS_GATEWAY_TOKEN="$TOKEN"
-
-# Brain talks to Gateway over Tailscale
 export JARVIS_GATEWAY_BASE="http://100.112.63.25:8282"
 
 cd /Users/jarvisbrain/jarvis/services/brain/brain
