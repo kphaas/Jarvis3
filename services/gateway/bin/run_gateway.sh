@@ -1,8 +1,10 @@
 #!/bin/zsh
 set -euo pipefail
 
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
 echo "Waiting for Tailscale..."
-for i in {1..30}; do
+for i in {1..60}; do
   TS_IP=$(tailscale ip -4 2>/dev/null || true)
   if [[ "$TS_IP" == "100.112.63.25" ]]; then
     echo "Tailscale ready: $TS_IP"
