@@ -78,15 +78,17 @@ Respond with JSON only. No other text."""
         return {"target": "llama", "reason": "parse_fallback"}
 
 async def route(intent: str, complexity: int = 3) -> dict:
+    if complexity >= 4:
+        result = rule_route(intent, complexity)
+        if result and result.get("target") not in ("llama", "qwen"):
+            return result
+        return {"target": "claude", "reason": "high complexity — routed to Claude"}
+    if complexity == 3:
+        result = rule_route(intent, complexity)
+        if result and result.get("target") not in ("llama",):
+            return result
+        return {"target": "perplexity", "reason": "medium complexity — routed to Perplexity"}
     result = rule_route(intent, complexity)
     if result:
         return result
     return await llama_route(intent)
-
-from brain.cloud_client import ask_cloud
-
-async def route_to_cloud(intent: str, complexity: int) -> dict:
-    if complexity >= 4:
-        return await ask_cloud("claude", intent)
-    else:
-        return await ask_cloud("perplexity", intent)

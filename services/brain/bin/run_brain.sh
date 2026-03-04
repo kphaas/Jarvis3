@@ -31,11 +31,19 @@ done
 
 "$HOME/jarvis/bin/mount_docs.sh" 2>/dev/null || true
 
-TOKEN="$(security find-generic-password -a token -s jarvis.gateway.v1 -w)"
+TOKEN="$(security find-generic-password -a token -s jarvis.gateway.v1 -w 2>/dev/null || true)"
+if [[ -z "${TOKEN}" ]]; then
+  echo "Keychain locked, falling back to .secrets"
+  TOKEN="$(grep '^GATEWAY_TOKEN=' /Users/jarvisbrain/jarvis/.secrets | cut -d= -f2 || true)"
+fi
+if [[ -z "${TOKEN}" ]]; then
+  echo "ERROR: No gateway token found" >&2
+  exit 2
+fi
 export JARVIS_GATEWAY_TOKEN="$TOKEN"
 export JARVIS_GATEWAY_BASE="http://100.112.63.25:8282"
 
-cd /Users/jarvisbrain/jarvis/services/brain/brain
-exec /Users/jarvisbrain/jarvis/services/brain/.venv/bin/uvicorn app:app \
+cd /Users/jarvisbrain/jarvis/services/brain
+exec /Users/jarvisbrain/jarvis/services/brain/.venv/bin/uvicorn brain.app:app \
   --host 0.0.0.0 \
   --port 8182

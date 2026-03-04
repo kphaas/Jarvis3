@@ -6,7 +6,7 @@ from pathlib import Path
 import os
 import subprocess
 
-from planner import propose_plan, enforce_policy
+from brain.planner import propose_plan, enforce_policy
 
 app = FastAPI(title="Jarvis Brain")
 
@@ -515,7 +515,7 @@ setInterval(() => {
 """
 
 
-from router import route
+from brain.router import route
 
 class AskRequest(BaseModel):
     intent: str
@@ -574,9 +574,16 @@ async def ask(req: AskRequest):
             text     = "No scrape target found"
             provider = "scrape/miss"
 
+    elif target in ("claude", "perplexity"):
+        from brain.cloud_client import ask_cloud
+        provider_name = "claude" if target == "claude" else "perplexity"
+        cloud_resp = await ask_cloud(provider_name, req.intent, intent=req.intent)
+        text     = cloud_resp.get("response", "No response from cloud")
+        provider = f"cloud/{target}"
+
     else:
-        text     = f"[ROUTING TO {target.upper()}] — cloud integration coming in Phase 2b"
-        provider = f"cloud/{target} (pending)"
+        text     = f"Unknown routing target: {target}"
+        provider = "error"
 
     return {
         "response": text,
@@ -586,7 +593,7 @@ async def ask(req: AskRequest):
     }
 
 
-from scrape_targets import find_scrape_target
+from brain.scrape_targets import find_scrape_target
 
 class ScrapeRequest(BaseModel):
     intent: str
