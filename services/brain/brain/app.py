@@ -387,6 +387,29 @@ def health_full():
     except Exception as e:
         results["logs"] = {"status": "error", "detail": str(e)}
 
+    try:
+        import httpx as _httpx
+        r = _httpx.get("http://localhost:11434/api/tags", timeout=5)
+        models = [m["name"] for m in r.json().get("models", [])]
+        llama_ok = any("llama3.1" in m for m in models)
+        qwen_ok  = any("qwen2.5-coder" in m for m in models)
+        results["ollama"] = {
+            "status": "ok" if r.status_code == 200 else "error",
+            "models": models
+        }
+        results["ollama_llama"] = {
+            "status": "ok" if llama_ok else "missing",
+            "model": "llama3.1:8b"
+        }
+        results["ollama_qwen"] = {
+            "status": "ok" if qwen_ok else "missing",
+            "model": "qwen2.5-coder:7b"
+        }
+    except Exception as e:
+        results["ollama"]       = {"status": "error", "detail": str(e)}
+        results["ollama_llama"] = {"status": "error", "detail": str(e)}
+        results["ollama_qwen"]  = {"status": "error", "detail": str(e)}
+
     overall = "ok" if all(v.get("status") == "ok" for v in results.values()) else "degraded"
 
     return {"status": overall, "ts": ts, "subsystems": results}
@@ -447,7 +470,7 @@ def dashboard():
 <div class="refresh-note">Next refresh in <span id="countdown">15</span>s</div>
 
 <script>
-const ICONS = { brain: "🧠", gateway: "🌐", unraid_mount: "💾", staging: "📁", logs: "📋" };
+const ICONS = { brain: "🧠", gateway: "🌐", unraid_mount: "💾", staging: "📁", logs: "📋", ollama: "🤖", ollama_llama: "🦙", ollama_qwen: "💻" };
 
 async function fetchHealth() {
   try {
