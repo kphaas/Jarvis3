@@ -5,10 +5,19 @@ from datetime import datetime
 from pathlib import Path
 import os
 import subprocess
+from fastapi.middleware.cors import CORSMiddleware
 
 from brain.planner import propose_plan, enforce_policy
 
 app = FastAPI(title="Jarvis Brain")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:4000", "http://100.87.223.31:4000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # -----------------------------
 # Models
@@ -1005,6 +1014,54 @@ async def code_write(req: CodeWriteRequest):
             pass
 
         raise HTTPException(status_code=500, detail=error)
+
+
+@app.get("/v1/metrics")
+async def node_metrics():
+    from brain.metrics import get_metrics
+    return get_metrics()
+
+@app.get("/v1/github/prs")
+async def list_prs():
+    from brain.github_client import get_open_prs
+    return await get_open_prs()
+
+@app.post("/v1/github/prs/{pr_number}/merge")
+async def merge_pr(pr_number: int):
+    from brain.github_client import merge_pr as do_merge
+    return await do_merge(pr_number)
+
+@app.post("/v1/github/prs/{pr_number}/close")
+async def close_pr(pr_number: int):
+    from brain.github_client import close_pr as do_close
+    return await do_close(pr_number)
+
+@app.get("/v1/code/log")
+async def code_log(limit: int = 20):
+    import asyncpg, os
+    conn = await asyncpg.connect("postgresql://jarvis:jarvisdb@localhost:5432/jarvis")
+    rows = await conn.fetch(
+        "SELECT ts::text, intent, target_file as file, branch, escalated, success, "
+        "validation_lint as lint, validation_security as security "
+        "FROM code_write_log ORDER BY ts DESC LIMIT $1", limit
+    )
+    await conn.close()
+    return [dict(r) for r in rows]
+
+@app.get("/v1/agents")
+async def list_agents():
+    return []
+
+@app.post("/v1/admin/restart/{node}")
+async def restart_node(node: str):
+    import subprocess
+    if node == "brain":
+        subprocess.Popen(
+            "sleep 2 && launchctl kickstart -k gui/$UID/com.jarvis.brain",
+            shell=True
+        )
+        return {"status": "restart_scheduled", "node": node}
+    return {"status": "remote_restart_not_yet_implemented", "node": node}
 
 from brain.costs import router as costs_router
 app.include_router(costs_router)
