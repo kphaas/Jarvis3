@@ -17,6 +17,16 @@ if [[ "$TS_IP" != "100.64.166.22" ]]; then
   exit 1
 fi
 
+echo "Waiting for Ollama..."
+for i in {1..30}; do
+  if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+    echo "Ollama ready"
+    break
+  fi
+  echo "Attempt $i: Ollama not ready yet, waiting 2s..."
+  sleep 2
+done
+
 "$HOME/jarvis/bin/mount_docs.sh" 2>/dev/null || true
 
 TOKEN="$(security find-generic-password -a token -s jarvis.gateway.v1 -w)"
