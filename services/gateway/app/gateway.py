@@ -14,7 +14,7 @@ app = FastAPI(title="Jarvis Gateway")
 
 MAX_BYTES = 3 * 1024 * 1024   # 3 MB
 TIMEOUT_S = 10.0
-UA = "JarvisGateway/1.0"
+UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
 
 class FetchRequest(BaseModel):
     url: str
