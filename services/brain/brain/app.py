@@ -750,6 +750,18 @@ async def ask(req: AskRequest):
         text     = r.json()["response"]
         provider = "local/llama"
 
+
+    elif target == "endpoint_llama":
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                "http://100.87.223.31:3000/v1/local/ask",
+                json={"model": "llama3.1:8b", "prompt": req.intent},
+                timeout=90
+            )
+        data     = r.json()
+        text     = data.get("response", "No response from Endpoint")
+        provider = "local/endpoint_llama"
+
     elif target == "scrape":
         scrape_target = find_scrape_target(req.intent)
         if scrape_target:
