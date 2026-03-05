@@ -201,6 +201,9 @@ function useJarvisData() {
     const [epMetrics, emErr] = await apiFetch(`${ENDPOINT}/v1/metrics`);
     if (epMetrics) results.epMetrics = epMetrics; else errs.epMetrics = emErr;
 
+    const [ollamaHealth, ohErr] = await apiFetch(`${ENDPOINT}/v1/local/health`);
+    if (ollamaHealth) results.ollamaHealth = ollamaHealth; else errs.ollamaHealth = ohErr;
+
 
     setData(prev => ({ ...prev, ...results }));
     setErrors(errs);
@@ -223,6 +226,7 @@ function SummaryTab({ data, errors, onAction }) {
   const costs = data?.costs || {};
   const agents = data?.agents || [];
   const codeLog = data?.codeLog || [];
+  const ollamaHealth = data?.ollamaHealth || null;
 
   const nodes = [
     { name: "BRAIN", key: "brain", host: "100.64.166.22", port: 8182, metrics: data?.brainMetrics },
@@ -333,6 +337,28 @@ function SummaryTab({ data, errors, onAction }) {
           </div>
           <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
             <ActionBtn onClick={() => onAction("updateBudget")} variant="warning">UPDATE LIMITS</ActionBtn>
+          </div>
+        </Card>
+
+        <Card>
+          <SectionLabel>LOCAL INFERENCE</SectionLabel>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6, padding: "14px 20px", minWidth: 160 }}>
+              <div style={{ color: C.accent, fontSize: 11, fontWeight: 600, letterSpacing: 1, fontFamily: "'Share Tech Mono', monospace" }}>ENDPOINT OLLAMA</div>
+              <div style={{ color: ollamaHealth?.ollama_running ? C.green : C.red, fontSize: 22, fontWeight: 700, margin: "6px 0" }}>
+                {ollamaHealth?.ollama_running ? "ONLINE" : "OFFLINE"}
+              </div>
+              <div style={{ color: C.muted, fontSize: 11 }}>{ollamaHealth?.models?.join(", ") || "no models"}</div>
+              <div style={{ color: C.green, fontSize: 11, marginTop: 4 }}>$0.00 / call</div>
+            </div>
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6, padding: "14px 20px", minWidth: 160 }}>
+              <div style={{ color: C.accent, fontSize: 11, fontWeight: 600, letterSpacing: 1, fontFamily: "'Share Tech Mono', monospace" }}>MODELS LOADED</div>
+              <div style={{ color: C.text, fontSize: 22, fontWeight: 700, margin: "6px 0" }}>
+                {ollamaHealth?.model_count ?? "—"}
+              </div>
+              <div style={{ color: C.muted, fontSize: 11 }}>on Endpoint node</div>
+              <div style={{ color: C.green, fontSize: 11, marginTop: 4 }}>24GB unified memory</div>
+            </div>
           </div>
         </Card>
       </div>
@@ -1153,6 +1179,7 @@ const FALLBACK_SERVICES = [
   { name: "Budget Alerts",     status: "LIVE",    detail: "75% warn / 90% critical" },
   { name: "Code Writer",       status: "LIVE",    detail: "POST /v1/code/write" },
   { name: "Branch Protection", status: "ACTIVE",  detail: "main locked — PRs required" },
+  { name: "Ollama (Endpoint)", status: "RUNNING", detail: "llama3.1:8b — port 11434" },
 ];
 
 const FALLBACK_SECURITY = [
