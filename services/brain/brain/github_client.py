@@ -6,7 +6,7 @@ REPO = "kphaas/Jarvis3"
 BASE = "https://api.github.com"
 
 def _get_token() -> str:
-    secrets_path = os.path.expanduser("~/.jarvis/.secrets")
+    secrets_path = os.path.expanduser("~/jarvis/.secrets")
     if os.path.exists(secrets_path):
         with open(secrets_path) as f:
             for line in f:

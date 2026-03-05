@@ -11,8 +11,6 @@ CODE_KEYWORDS = {
 
 SCRAPE_KEYWORDS = {
     "weather", "forecast", "temperature", "rain", "sunny",
-    "score", "news", "headlines", "latest", "today",
-    "stocks", "market", "nasdaq", "dow", "s&p",
     "uga", "dawgs", "bulldogs", "soccer", "fifa",
     "atlanta", "alpharetta", "johns creek", "roswell",
     "college football", "cfb", "olympics", "unraid",
@@ -21,7 +19,12 @@ SCRAPE_KEYWORDS = {
 
 SEARCH_KEYWORDS = {
     "who is", "what is", "search", "find", "lookup",
-    "tell me about", "research"
+    "tell me about", "research",
+    "news", "headlines", "latest news", "today",
+    "score", "scores", "standings",
+    "stocks", "market", "nasdaq", "dow", "s&p",
+    "price of", "how much is", "current price",
+    "spacex", "tesla", "apple", "google", "microsoft"
 }
 
 def rule_route(intent: str, complexity: int) -> dict | None:

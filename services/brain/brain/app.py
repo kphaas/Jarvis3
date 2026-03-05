@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -1061,8 +1061,35 @@ async def code_log(limit: int = 20):
     return [dict(r) for r in rows]
 
 @app.get("/v1/agents")
-async def list_agents():
-    return []
+async def list_agents(limit: int = 20):
+    import psycopg2
+    import psycopg2.extras
+    conn = psycopg2.connect("host=localhost port=5432 dbname=jarvis user=jarvis password=jarvisdb")
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT task_id, goal, status, result, created_at, updated_at FROM agents ORDER BY created_at DESC LIMIT %s", (limit,))
+            rows = cur.fetchall()
+            return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+@app.post("/v1/agent/run")
+async def agent_run(req: dict, background_tasks: BackgroundTasks):
+    goal = req.get("goal", "").strip()
+    if not goal:
+        raise HTTPException(status_code=400, detail="goal is required")
+    from brain.agent_runner import create_agent_task, run_agent
+    task_id = create_agent_task(goal)
+    background_tasks.add_task(run_agent, task_id, goal)
+    return {"task_id": task_id, "status": "accepted", "goal": goal}
+
+@app.get("/v1/agent/status/{task_id}")
+async def agent_status(task_id: str):
+    from brain.agent_runner import get_agent_status
+    result = get_agent_status(task_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="task not found")
+    return result
 
 @app.post("/v1/admin/restart/{node}")
 async def restart_node(node: str):

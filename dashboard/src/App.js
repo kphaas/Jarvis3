@@ -234,7 +234,7 @@ function SummaryTab({ data, errors, onAction }) {
   const weeklyPct = costs.budget?.weekly ? (costs.budget.weekly.spent_usd / costs.budget.weekly.limit_usd * 100) : 0;
   const monthPct  = costs.budget?.monthly? (costs.budget.monthly.spent_usd/ costs.budget.monthly.limit_usd* 100) : 0;
 
-  const activeAgents = agents.filter(a => a.status === "ACTIVE").length;
+  const activeAgents = agents.filter(a => ["planning","running","pending"].includes(a.status)).length;
   const recentErrors = (data?.errors || []).filter(e => e.level === "ERROR").length;
   const openPRs = (data?.prs || []).length;
   const nodesOnline = nodes.filter(n => n.metrics && !errors[`${n.name.toLowerCase()}Metrics`]).length;
@@ -376,6 +376,33 @@ function SummaryTab({ data, errors, onAction }) {
             </div>
           ))}
           {!codeLog.length && <div style={{ color: C.muted, fontSize: 12, textAlign: "center", padding: 20 }}>No data — check /v1/code/log endpoint</div>}
+        </div>
+      </Card>
+
+      {/* Agent task history */}
+      <Card>
+        <SectionLabel>AGENT TASKS</SectionLabel>
+        <div style={{ display: "grid", gap: 6 }}>
+          {(agents.slice(0,8) || []).map((a, i) => {
+            const statusColor = a.status === "complete" ? C.green : a.status === "error" ? C.red : a.status === "running" || a.status === "planning" ? C.amber : C.muted;
+            const ts = a.created_at ? new Date(a.created_at).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}) : "";
+            const resultPreview = a.result ? a.result.replace(/Step \d+ \([^)]+\): /g, "").slice(0, 120) : "";
+            return (
+              <div key={i} style={{
+                display: "grid", gridTemplateColumns: "55px 1fr 80px",
+                gap: 12, alignItems: "start", padding: "10px 12px",
+                background: C.surface, border: `1px solid ${C.border}`, borderRadius: 3,
+              }}>
+                <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 10, color: C.muted, paddingTop: 2 }}>{ts}</span>
+                <div>
+                  <div style={{ fontSize: 12, color: C.text, marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.goal}</div>
+                  {resultPreview && <div style={{ fontSize: 10, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{resultPreview}</div>}
+                </div>
+                <span style={{ fontSize: 10, fontFamily: "'Share Tech Mono', monospace", color: statusColor, textAlign: "right", paddingTop: 2, textTransform: "uppercase" }}>{a.status}</span>
+              </div>
+            );
+          })}
+          {!agents.length && <div style={{ color: C.muted, fontSize: 12, textAlign: "center", padding: 20 }}>No agent tasks yet — POST to /v1/agent/run</div>}
         </div>
       </Card>
     </div>
@@ -1299,4 +1326,3 @@ export default function App() {
     </>
   );
 }
-
