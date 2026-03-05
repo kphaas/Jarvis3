@@ -724,17 +724,22 @@ from brain.router import route
 class AskRequest(BaseModel):
     intent: str
     complexity: int = 3
+    user_id: Optional[str] = "ken"
 
 @app.post("/v1/ask")
 async def ask(req: AskRequest):
     routing = await route(req.intent, req.complexity)
     target  = routing["target"]
 
+    user_id = getattr(req, "user_id", "ken") or "ken"
+    memory_prefix = build_memory_prefix(user_id, req.intent)
+    augmented_intent = memory_prefix + req.intent if memory_prefix else req.intent
+
     if target == "qwen":
         async with httpx.AsyncClient() as client:
             r = await client.post(
                 "http://localhost:11434/api/generate",
-                json={"model": "qwen2.5-coder:7b", "prompt": req.intent, "stream": False},
+                json={"model": "qwen2.5-coder:7b", "prompt": augmented_intent, "stream": False},
                 timeout=60
             )
         text     = r.json()["response"]
@@ -744,7 +749,7 @@ async def ask(req: AskRequest):
         async with httpx.AsyncClient() as client:
             r = await client.post(
                 "http://localhost:11434/api/generate",
-                json={"model": "llama3.1:8b", "prompt": req.intent, "stream": False},
+                json={"model": "llama3.1:8b", "prompt": augmented_intent, "stream": False},
                 timeout=60
             )
         text     = r.json()["response"]
@@ -755,7 +760,7 @@ async def ask(req: AskRequest):
         async with httpx.AsyncClient() as client:
             r = await client.post(
                 "http://100.87.223.31:3000/v1/local/ask",
-                json={"model": "llama3.1:8b", "prompt": req.intent},
+                json={"model": "llama3.1:8b", "prompt": augmented_intent},
                 timeout=90
             )
         data     = r.json()
@@ -793,7 +798,7 @@ async def ask(req: AskRequest):
     elif target in ("claude", "perplexity"):
         from brain.cloud_client import ask_cloud
         provider_name = "claude" if target == "claude" else "perplexity"
-        cloud_resp = await ask_cloud(provider_name, req.intent, intent=req.intent)
+        cloud_resp = await ask_cloud(provider_name, augmented_intent, intent=req.intent)
         text     = cloud_resp.get("response", "No response from cloud")
         provider = f"cloud/{target}"
 
@@ -1075,5 +1080,149 @@ async def restart_node(node: str):
         return {"status": "restart_scheduled", "node": node}
     return {"status": "remote_restart_not_yet_implemented", "node": node}
 
+
+
+# ---------------------------------------------------------------------------
+# Phase 5b — Adaptive Router endpoints
+# ---------------------------------------------------------------------------
+
+class SimulateRequest(BaseModel):
+    intent: str
+    complexity: int = 3
+
+
+class RateRequest(BaseModel):
+    task_id: str
+    rating: int
+    provider: str
+    decision_id: Optional[int] = None
+
+
+class WeightOverride(BaseModel):
+    provider: str
+    weight: float
+    locked: bool = False
+
+
+class CircuitRequest(BaseModel):
+    provider: str
+
+
+class CircuitThresholds(BaseModel):
+    provider: str
+    threshold: int
+    window_minutes: int
+
+
+@app.post("/v1/router/simulate")
+async def router_simulate(req: SimulateRequest):
+    """Dry-run — returns what the router would choose without executing."""
+    from brain.adaptive_router import simulate_route
+    return simulate_route(req.intent, req.complexity)
+
+
+@app.post("/v1/router/replay/{decision_id}")
+async def router_replay(decision_id: int):
+    """Re-run routing logic against a past decision and compare to current weights."""
+    from brain.adaptive_router import replay_decision
+    return replay_decision(decision_id)
+
+
+@app.get("/v1/router/stats")
+async def router_stats(hours: int = 24):
+    """Full analytics payload for the dashboard routing tab."""
+    from brain.adaptive_router import get_routing_stats
+    return get_routing_stats(hours)
+
+
+@app.get("/v1/router/decisions")
+async def router_decisions(limit: int = 15, offset: int = 0):
+    """Paginated live request feed for the dashboard."""
+    from brain.adaptive_router import get_recent_decisions
+    return get_recent_decisions(limit, offset)
+
+
+@app.post("/v1/router/rate")
+async def router_rate(req: RateRequest):
+    """Record a thumbs up (1) or thumbs down (-1) quality rating."""
+    if req.rating not in (1, -1):
+        raise HTTPException(status_code=400, detail="rating must be 1 or -1")
+    from brain.adaptive_router import record_rating
+    ok = record_rating(req.task_id, req.rating, req.provider, req.decision_id)
+    return {"ok": ok}
+
+
+@app.post("/v1/router/weights")
+async def router_set_weight(req: WeightOverride):
+    """Manually override a provider weight and lock state from the dashboard."""
+    from brain.adaptive_router import set_weight
+    ok = set_weight(req.provider, req.weight, req.locked)
+    return {"ok": ok, "provider": req.provider, "weight": req.weight, "locked": req.locked}
+
+
+@app.post("/v1/router/recalculate")
+async def router_recalculate():
+    """Manually trigger a full weight recalculation (also runs on 24hr schedule)."""
+    from brain.adaptive_router import recalculate_weights
+    summary = recalculate_weights()
+    return {"ok": True, "summary": summary}
+
+
+@app.post("/v1/router/circuit/reset")
+async def circuit_reset(req: CircuitRequest):
+    """Manually reset a tripped circuit breaker from the dashboard."""
+    from brain.adaptive_router import reset_circuit
+    ok = reset_circuit(req.provider, triggered_by="dashboard")
+    return {"ok": ok, "provider": req.provider}
+
+
+@app.post("/v1/router/circuit/thresholds")
+async def circuit_thresholds(req: CircuitThresholds):
+    """Update circuit breaker threshold and window per provider."""
+    from brain.adaptive_router import update_circuit_thresholds
+    ok = update_circuit_thresholds(req.provider, req.threshold, req.window_minutes)
+    return {"ok": ok, "provider": req.provider}
+
 from brain.costs import router as costs_router
 app.include_router(costs_router)
+
+
+from brain.memory_service import (
+    store_memory, recall_memories, delete_memory,
+    list_memories, queue_summarize_job, build_memory_prefix
+)
+
+class MemoryStoreRequest(BaseModel):
+    user_id: str
+    summary: str
+    memory_type: str = "episodic"
+    structured_data: Optional[dict] = None
+
+@app.post("/v1/memory/store")
+def memory_store(req: MemoryStoreRequest):
+    memory_id = store_memory(
+        user_id=req.user_id,
+        summary=req.summary,
+        memory_type=req.memory_type,
+        structured_data=req.structured_data,
+    )
+    if memory_id is None:
+        raise HTTPException(status_code=400, detail="Memory not stored")
+    return {"memory_id": memory_id, "status": "stored"}
+
+@app.get("/v1/memory/recall")
+def memory_recall(user_id: str, query: str, top_n: int = 5):
+    memories = recall_memories(user_id=user_id, query=query, top_n=top_n)
+    return {"user_id": user_id, "count": len(memories), "memories": memories}
+
+@app.delete("/v1/memory/{memory_id}")
+def memory_delete(memory_id: str, user_id: str):
+    deleted = delete_memory(memory_id=memory_id, user_id=user_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return {"memory_id": memory_id, "status": "deleted"}
+
+@app.get("/v1/memory/list")
+def memory_list(user_id: str):
+    memories = list_memories(user_id=user_id)
+    return {"user_id": user_id, "count": len(memories), "memories": memories}

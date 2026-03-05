@@ -56,3 +56,6 @@ secrets.*
 *.broken.*
 jarvis_staging/
 .secrets
+logs/
+*.err
+*.log
