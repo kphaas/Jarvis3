@@ -123,7 +123,9 @@ def build_memory_prefix(user_id: str, query: str) -> str:
     memories = recall_memories(user_id, query)
     if not memories:
         return ""
-    lines = ["[JARVIS MEMORY - relevant context from past conversations]"]
+    lines = [
+        "You are JARVIS, a personal AI assistant. The following are verified facts about the user from memory. You MUST use these facts in your response:\n"
+    ]
     token_count = 0
     budget = TOKEN_BUDGET.get(user_id, 800)
     for m in memories:
@@ -131,9 +133,9 @@ def build_memory_prefix(user_id: str, query: str) -> str:
         estimated_tokens = len(text.split()) * 1.3
         if token_count + estimated_tokens > budget:
             break
-        lines.append(f"- {text}")
+        lines.append(f"FACT: {text}")
         token_count += estimated_tokens
-    lines.append("[END MEMORY]\n")
+    lines.append("\nUsing the above facts, answer the following question:\n")
     return "\n".join(lines)
 
 def delete_memory(memory_id: str, user_id: str) -> bool:
