@@ -70,3 +70,39 @@ def services():
         {"name": "Avatar",            "status": "PLANNED", "detail": "Phase 7 — JARVIS face"},
         {"name": "Video Ingestion",   "status": "PLANNED", "detail": "Phase 7 — camera feed"},
     ]}
+
+
+from fastapi.responses import JSONResponse
+from fastapi import Request
+from app import ollama_client
+
+@app.post("/v1/local/ask")
+async def local_ask(request: Request):
+    """Run local LLM inference via Ollama on Endpoint."""
+    try:
+        body = await request.json()
+        prompt = body.get("prompt", "").strip()
+        model = body.get("model", "llama3.1:8b")
+        system = body.get("system", None)
+
+        if not prompt:
+            return JSONResponse({"error": "prompt required"}, status_code=400)
+
+        result = await ollama_client.ask(prompt=prompt, model=model, system=system)
+        return JSONResponse(result)
+
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/v1/local/models")
+async def local_models():
+    """List models available on Endpoint Ollama."""
+    models = await ollama_client.list_models()
+    return JSONResponse({"models": [m.get("name") for m in models]})
+
+
+@app.get("/v1/local/health")
+async def local_health():
+    """Ollama health check for dashboard."""
+    return JSONResponse(await ollama_client.health())
