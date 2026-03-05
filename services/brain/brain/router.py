@@ -32,7 +32,7 @@ def rule_route(intent: str, complexity: int) -> dict | None:
         return {"target": "qwen", "reason": "code_keyword_match"}
 
     if complexity <= 2:
-        return {"target": "llama", "reason": "low_complexity"}
+        return {"target": "endpoint_llama", "reason": "low_complexity — offload to Endpoint"}
 
     if any(k in lower for k in SCRAPE_KEYWORDS):
         return {"target": "scrape", "reason": "scrape_keyword_match"}
@@ -41,7 +41,7 @@ def rule_route(intent: str, complexity: int) -> dict | None:
         return {"target": "perplexity", "reason": "search_keyword_match"}
 
     if complexity <= 3:
-        return {"target": "llama", "reason": "low_complexity"}
+        return {"target": "endpoint_llama", "reason": "low_complexity — offload to Endpoint"}
 
     return None
 
