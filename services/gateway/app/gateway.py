@@ -113,13 +113,15 @@ def _validate_url(url: str) -> None:
 # --- Jarvis auth (Brain -> Gateway) ---
 import os
 from fastapi import Header
+from services.gateway.app.secrets import get_secret
 
-def require_jarvis_token(x_jarvis_token: Optional[str] = Header(default=None)):
-    expected = os.environ.get('JARVIS_GATEWAY_TOKEN')
+def require_jarvis_token(authorization: Optional[str] = Header(default=None)):
+    expected = get_secret("jarvis.gateway.v1", "token")
     if not expected:
-        raise HTTPException(status_code=500, detail='Gateway misconfigured: missing JARVIS_GATEWAY_TOKEN')
-    if not x_jarvis_token or x_jarvis_token != expected:
-        raise HTTPException(status_code=401, detail='Unauthorized')
+        raise HTTPException(status_code=500, detail="Gateway misconfigured: missing GATEWAY_TOKEN")
+    token = authorization.replace("Bearer ", "").strip() if authorization else None
+    if not token or token != expected:
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 def _log_event(event: dict) -> None:
     # One JSON line per request (easy to grep + parse)
