@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS Voice</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#080808;--surface:#111;--border:#1e1e1e;--accent:#C6F135;--accent-dim:rgba(198,241,53,0.12);--text:#e8e8e8;--muted:#555;--danger:#ff4444;--cloud:#4aabff;--local:#C6F135;--radius:12px;--mono:'DM Mono',monospace;--head:'Syne',sans-serif}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:24px 16px}
+header{width:100%;max-width:720px;display:flex;align-items:center;justify-content:space-between;margin-bottom:28px}
+.logo{font-family:var(--head);font-size:1.4rem;letter-spacing:4px;color:var(--accent)}.logo span{color:#fff}
+.user-bar{display:flex;gap:6px}
+.user-btn{background:var(--surface);border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:.7rem;padding:5px 10px;border-radius:20px;cursor:pointer;transition:all .15s}
+.user-btn.active{border-color:var(--accent);color:var(--accent);background:var(--accent-dim)}
+.user-btn.authed{border-color:#2a4a00}
+.status-row{display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+.sp{font-size:.65rem;padding:4px 10px;border-radius:20px;border:1px solid var(--border);color:var(--muted);background:var(--surface)}
+.sp.ok{border-color:#2a4a00;color:var(--accent)}.sp.err{border-color:#4a0000;color:var(--danger)}
+.mic-area{display:flex;flex-direction:column;align-items:center;gap:14px;margin-bottom:28px}
+.mic-ring{position:relative;width:120px;height:120px}
+.mic-pulse{position:absolute;inset:0;border-radius:50%;border:2px solid var(--accent);opacity:0;transform:scale(1)}
+.mic-pulse.on{animation:pulse 1.2s ease-out infinite}
+@keyframes pulse{0%{opacity:.6;transform:scale(1)}100%{opacity:0;transform:scale(1.7)}}
+.mic-btn{position:absolute;inset:10px;border-radius:50%;background:var(--surface);border:2px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:2.2rem;transition:all .15s}
+.mic-btn:hover{border-color:var(--accent);background:var(--accent-dim)}
+.mic-btn.on{background:var(--accent-dim);border-color:var(--accent);box-shadow:0 0 24px rgba(198,241,53,.2)}
+.mic-label{font-size:.7rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
+.input-row{width:100%;max-width:720px;display:flex;gap:10px;margin-bottom:18px}
+.txt{flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:.85rem;padding:12px 16px;border-radius:var(--radius);outline:none;transition:border-color .15s}
+.txt:focus{border-color:var(--accent)}
+.send-btn{background:var(--accent);color:#000;border:none;font-family:var(--mono);font-size:.8rem;font-weight:500;padding:12px 20px;border-radius:var(--radius);cursor:pointer;transition:opacity .15s}
+.send-btn:disabled{opacity:.35;cursor:not-allowed}.send-btn:not(:disabled):hover{opacity:.85}
+.resp-box{width:100%;max-width:720px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:18px;min-height:80px;position:relative}
+.resp-meta{display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap}
+.badge{font-size:.65rem;padding:3px 8px;border-radius:20px;font-weight:500;letter-spacing:1px;text-transform:uppercase}
+.badge.local{background:rgba(198,241,53,.15);color:var(--accent);border:1px solid rgba(198,241,53,.3)}
+.badge.cloud{background:rgba(74,171,255,.12);color:var(--cloud);border:1px solid rgba(74,171,255,.3)}
+.badge.info{background:var(--bg);color:var(--muted);border:1px solid var(--border)}
+.resp-text{font-size:.9rem;line-height:1.65;color:var(--text);white-space:pre-wrap}
+.resp-text.empty{color:var(--muted);font-style:italic}
+.tts-btn{position:absolute;top:14px;right:14px;background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:5px 10px;font-size:.7rem;cursor:pointer;font-family:var(--mono);transition:all .15s}
+.tts-btn:hover{border-color:var(--accent);color:var(--accent)}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.history{width:100%;max-width:720px}
+.hist-hdr{font-size:.65rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px}
+.hist-list{display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto}
+.hist-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;cursor:pointer;transition:border-color .12s}
+.hist-item:hover{border-color:#333}
+.hist-q{font-size:.75rem;color:var(--text);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hist-r{font-size:.7rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hist-meta{display:flex;gap:6px;margin-top:6px}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a0000;border:1px solid var(--danger);color:var(--danger);padding:10px 20px;border-radius:8px;font-size:.78rem;opacity:0;transition:opacity .2s;pointer-events:none;z-index:99}
+.toast.show{opacity:1}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;z-index:200;opacity:0;pointer-events:none;transition:opacity .2s}
+.modal-overlay.show{opacity:1;pointer-events:all}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:32px;width:320px;display:flex;flex-direction:column;gap:16px}
+.modal-title{font-family:var(--head);font-size:1rem;letter-spacing:3px;color:var(--accent)}
+.modal-sub{font-size:.72rem;color:var(--muted)}
+.pin-input{background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:1.4rem;letter-spacing:8px;padding:14px 16px;border-radius:var(--radius);outline:none;width:100%;text-align:center;transition:border-color .15s}
+.pin-input:focus{border-color:var(--accent)}
+.modal-btns{display:flex;gap:10px}
+.modal-confirm{flex:1;background:var(--accent);color:#000;border:none;font-family:var(--mono);font-size:.8rem;font-weight:500;padding:11px;border-radius:var(--radius);cursor:pointer}
+.modal-cancel{flex:1;background:none;color:var(--muted);border:1px solid var(--border);font-family:var(--mono);font-size:.8rem;padding:11px;border-radius:var(--radius);cursor:pointer}
+.modal-cancel:hover{border-color:#444;color:var(--text)}
+.user-indicator{font-size:.65rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;width:100%;max-width:720px;text-align:right}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:4px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">J<span>ARVIS</span></div>
+  <div class="user-bar">
+    <button class="user-btn" id="btn-ken" onclick="switchUser('ken')">Ken</button>
+    <button class="user-btn" id="btn-ryleigh" onclick="switchUser('ryleigh')">Ryleigh</button>
+    <button class="user-btn" id="btn-sloane" onclick="switchUser('sloane')">Sloane</button>
+    <button class="user-btn" id="btn-guest" onclick="switchUser('guest')">Guest</button>
+  </div>
+</header>
+<div class="user-indicator" id="userIndicator">not authenticated</div>
+<div class="status-row">
+  <div class="sp" id="sw">● whisper</div>
+  <div class="sp" id="st">● tts</div>
+  <div class="sp" id="sf">● ffmpeg</div>
+  <div class="sp" id="sb">● brain</div>
+</div>
+<div class="mic-area">
+  <div class="mic-ring">
+    <div class="mic-pulse" id="pulse"></div>
+    <button class="mic-btn" id="micBtn" onclick="toggleRec()">🎤</button>
+  </div>
+  <div class="mic-label" id="micLbl">select a user to begin</div>
+</div>
+<div class="input-row">
+  <input class="txt" id="txtIn" placeholder="or type a message…" onkeydown="if(event.key==='Enter'){event.preventDefault();submitTxt()}" disabled>
+  <button class="send-btn" id="sendBtn" onclick="submitTxt()" disabled>Send</button>
+</div>
+<div class="resp-box">
+  <div class="resp-meta" id="rMeta"></div>
+  <div class="resp-text empty" id="rText">Response will appear here…</div>
+  <button class="tts-btn" id="ttsBtn" style="display:none" onclick="speakLast()">▶ speak</button>
+</div>
+<div class="history">
+  <div class="hist-hdr">Session history</div>
+  <div class="hist-list" id="hist"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="pinModal">
+  <div class="modal">
+    <div class="modal-title">ADMIN ACCESS</div>
+    <div class="modal-sub">Enter admin PIN to switch to Ken</div>
+    <input class="pin-input" id="pinInput" type="password" maxlength="12" placeholder="••••"
+      onkeydown="if(event.key==='Enter')confirmPin()">
+    <div class="modal-btns">
+      <button class="modal-confirm" onclick="confirmPin()">Confirm</button>
+      <button class="modal-cancel" onclick="cancelPin()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let user = null;
+let recording = false, mr = null, chunks = [], lastText = '', history = [];
+let authedUsers = new Set();
+let pendingSwitchUser = null;
+
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function showErr(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),4000)}
+
+function updateUserUI(){
+  document.querySelectorAll('.user-btn').forEach(b=>b.classList.remove('active'));
+  if(user){
+    const btn=document.getElementById('btn-'+user);
+    if(btn)btn.classList.add('active');
+    document.getElementById('userIndicator').textContent='active: '+user+(user==='ken'?' [admin]':'');
+    document.getElementById('micLbl').textContent='click to speak';
+    document.getElementById('txtIn').disabled=false;
+    document.getElementById('sendBtn').disabled=false;
+  } else {
+    document.getElementById('userIndicator').textContent='not authenticated';
+    document.getElementById('micLbl').textContent='select a user to begin';
+    document.getElementById('txtIn').disabled=true;
+    document.getElementById('sendBtn').disabled=true;
+  }
+}
+
+async function switchUser(u){
+  if(u === 'ken'){
+    pendingSwitchUser = 'ken';
+    document.getElementById('pinInput').value='';
+    document.getElementById('pinModal').classList.add('show');
+    setTimeout(()=>document.getElementById('pinInput').focus(),100);
+    return;
+  }
+  await authUser(u);
+}
+
+async function authUser(u, pin){
+  const body = {user_id: u};
+  if(pin) body.pin = pin;
+  try{
+    const r = await fetch('/v1/voice/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok){
+      const d=await r.json().catch(()=>({}));
+      showErr(d.detail||'Auth failed');
+      return false;
+    }
+    authedUsers.add(u);
+    user=u;
+    updateUserUI();
+    return true;
+  }catch(e){
+    showErr('Auth error: '+e.message);
+    return false;
+  }
+}
+
+async function confirmPin(){
+  const pin=document.getElementById('pinInput').value.trim();
+  if(!pin){showErr('PIN required');return}
+  document.getElementById('pinModal').classList.remove('show');
+  const ok=await authUser('ken', pin);
+  if(!ok){
+    pendingSwitchUser=null;
+    showErr('Invalid PIN');
+  }
+  pendingSwitchUser=null;
+}
+
+function cancelPin(){
+  document.getElementById('pinModal').classList.remove('show');
+  pendingSwitchUser=null;
+}
+
+async function checkStatus(){
+  try{const d=await(await fetch('/v1/voice/status')).json();
+    pill('sw',d.whisper,'whisper');pill('st',d.tts,'tts');pill('sf',d.ffmpeg,'ffmpeg')}catch(e){pill('sw',false,'whisper')}
+  try{const r=await fetch('/v1/voice/brain-health',{signal:AbortSignal.timeout(3000)});pill('sb',r.ok,'brain')}catch(e){pill('sb',false,'brain')}
+}
+function pill(id,ok,lbl){const el=document.getElementById(id);el.textContent=(ok?'● ':'○ ')+lbl;el.className='sp '+(ok?'ok':'err')}
+
+async function toggleRec(){
+  if(!user){showErr('Select a user first');return}
+  if(recording){mr&&mr.stop();return}
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    chunks=[];mr=new MediaRecorder(stream);
+    mr.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data)};
+    mr.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());await doTranscribe(new Blob(chunks,{type:'audio/webm'}))};
+    mr.start(100);recording=true;
+    document.getElementById('micBtn').classList.add('on');
+    document.getElementById('pulse').classList.add('on');
+    document.getElementById('micLbl').textContent='recording… click to stop';
+  }catch(e){showErr('Mic: '+e.message)}
+}
+
+async function doTranscribe(blob){
+  recording=false;
+  document.getElementById('micBtn').classList.remove('on');
+  document.getElementById('pulse').classList.remove('on');
+  document.getElementById('micLbl').textContent='transcribing…';
+  try{
+    const fd=new FormData();fd.append('audio',blob,'audio.webm');
+    const d=await(await fetch('/v1/voice/transcribe',{method:'POST',body:fd})).json();
+    const txt=d.text.trim();
+    document.getElementById('micLbl').textContent='click to speak';
+    if(!txt)return;
+    document.getElementById('txtIn').value=txt;
+    await sendJarvis(txt);
+  }catch(e){showErr(e.message);document.getElementById('micLbl').textContent='click to speak'}
+}
+
+async function submitTxt(){const t=document.getElementById('txtIn').value.trim();if(t)await sendJarvis(t)}
+
+async function sendJarvis(txt){
+  if(!user){showErr('Select a user first');return}
+  setLoad(true);
+  try{
+    const d=await(await fetch('/v1/voice/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({intent:txt,user})})).json();
+    if(d.detail==='Authorization required --- pass Bearer token'){
+      authedUsers.delete(user);showErr('Session expired — please re-authenticate');setLoad(false);return;
+    }
+    const resp=d.response||d.text||d.answer||JSON.stringify(d);
+    const tgt=d.routing?.target||d.target||'unknown';
+    const reason=d.routing?.reason||d.reason||'';
+    const lat=d.latency_ms?d.latency_ms+'ms':'';
+    const local=['llama','qwen','local','ollama'].some(k=>tgt.toLowerCase().includes(k));
+    showResp(resp,tgt,reason,lat,local);
+    addHist(txt,resp,tgt,local);
+    lastText=resp;
+    await fetch('/v1/voice/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:resp,user})});
+    document.getElementById('txtIn').value='';
+  }catch(e){showErr('Error: '+e.message)}
+  finally{setLoad(false)}
+}
+
+function showResp(text,tgt,reason,lat,local){
+  const lo=local?'local':'cloud';
+  document.getElementById('rMeta').innerHTML=
+    `<span class="badge ${lo}">${lo.toUpperCase()}</span>`+
+    `<span class="badge info">${esc(tgt)}</span>`+
+    (lat?`<span class="badge info">${lat}</span>`:'')+
+    (reason?`<span class="badge info" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(reason)}</span>`:'');
+  const rt=document.getElementById('rText');
+  rt.textContent=text;rt.className='resp-text';
+  document.getElementById('ttsBtn').style.display='block';
+}
+
+function addHist(q,r,tgt,local){
+  history.unshift({q,r,tgt,local});if(history.length>10)history.pop();
+  const list=document.getElementById('hist');list.innerHTML='';
+  history.forEach(item=>{
+    const el=document.createElement('div');el.className='hist-item';
+    el.onclick=()=>{document.getElementById('txtIn').value=item.q};
+    const lo=item.local?'local':'cloud';
+    el.innerHTML=`<div class="hist-q">▸ ${esc(item.q)}</div><div class="hist-r">${esc(item.r.substring(0,100))}${item.r.length>100?'…':''}</div><div class="hist-meta"><span class="badge ${lo}" style="font-size:.6rem">${lo.toUpperCase()}</span><span class="badge info" style="font-size:.6rem">${esc(item.tgt)}</span></div>`;
+    list.appendChild(el);
+  });
+}
+
+async function speakLast(){
+  if(!lastText)return;
+  document.getElementById('ttsBtn').textContent='▶ speaking…';
+  try{await fetch('/v1/voice/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:lastText,user})})}catch(e){}
+  document.getElementById('ttsBtn').textContent='▶ speak';
+}
+
+function setLoad(on){
+  const rt=document.getElementById('rText');
+  if(on){rt.innerHTML='<span class="spin"></span> thinking…';rt.className='resp-text empty';document.getElementById('rMeta').innerHTML='';document.getElementById('ttsBtn').style.display='none'}
+  document.getElementById('sendBtn').disabled=on;
+}
+
+checkStatus();setInterval(checkStatus,30000);
+updateUserUI();
+</script>
+</body>
+</html>
