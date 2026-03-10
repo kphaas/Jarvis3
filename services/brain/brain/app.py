@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Header
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -8,12 +8,26 @@ import subprocess
 from fastapi.middleware.cors import CORSMiddleware
 
 from brain.planner import propose_plan, enforce_policy
+from brain.context_injector import get_news_context
+from brain.child_policy import get_user_profile, is_child_role, check_content_safe, build_child_prompt, enforce_complexity, BLOCKED_RESPONSE
+
+def _get_pg_password() -> str:
+    secrets_path = os.path.expanduser("~/jarvis/.secrets")
+    try:
+        with open(secrets_path) as f:
+            for line in f:
+                if line.startswith("POSTGRES_PASSWORD="):
+                    return line.strip().split("=", 1)[1]
+    except Exception:
+        pass
+    return ""
+
 
 app = FastAPI(title="Jarvis Brain")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4000", "http://100.87.223.31:4000"],
+    allow_origins=["http://localhost:4000", "http://localhost:4002", "http://localhost:4001", "http://100.87.223.31:4000", "http://100.87.223.31:4002", "http://100.87.223.31:4001"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -422,7 +436,7 @@ def health_full():
     try:
         import asyncio as _asyncio
         import asyncpg as _asyncpg
-        _conn = _asyncio.run(_asyncpg.connect("postgresql://jarvis:jarvisdb@localhost:5432/jarvis"))
+        _conn = _asyncio.run(_asyncpg.connect(f"postgresql://jarvis:{_get_pg_password()}@localhost:5432/jarvis"))
         _today   = _asyncio.run(_conn.fetchrow("SELECT COALESCE(SUM(cost_usd),0) as spent FROM cloud_costs WHERE DATE(ts)=CURRENT_DATE"))
         _week    = _asyncio.run(_conn.fetchrow("SELECT COALESCE(SUM(cost_usd),0) as spent FROM cloud_costs WHERE DATE_TRUNC('week',ts)=DATE_TRUNC('week',NOW())"))
         _month   = _asyncio.run(_conn.fetchrow("SELECT COALESCE(SUM(cost_usd),0) as spent FROM cloud_costs WHERE DATE_TRUNC('month',ts)=DATE_TRUNC('month',NOW())"))
@@ -453,7 +467,7 @@ def health_full():
 
     try:
         import psycopg2
-        _conn = psycopg2.connect("postgresql://jarvis:jarvisdb@localhost:5432/jarvis")
+        _conn = psycopg2.connect(f"postgresql://jarvis:{_get_pg_password()}@localhost:5432/jarvis")
         _cur = _conn.cursor()
         _cur.execute("SELECT COALESCE(SUM(cost_usd),0) FROM cloud_costs WHERE DATE(ts)=CURRENT_DATE")
         _ds = float(_cur.fetchone()[0])
@@ -727,13 +741,37 @@ class AskRequest(BaseModel):
     user_id: Optional[str] = "ken"
 
 @app.post("/v1/ask")
-async def ask(req: AskRequest):
+async def ask(req: AskRequest, authorization: str = Header(default=None)):
     routing = await route(req.intent, req.complexity)
     target  = routing["target"]
 
-    user_id = getattr(req, "user_id", "ken") or "ken"
+    user_id, role = await _resolve_user(
+        getattr(req, "user_id", "ken") or "ken",
+        authorization
+    )
+
+    profile = get_user_profile(user_id)
+    role = profile.get("role", role) if profile.get("role", "unknown") != "unknown" else role
+    req.complexity = enforce_complexity(req.complexity, profile)
+    safe, block_reason = check_content_safe(req.intent, profile)
+    if not safe:
+        return {"response": BLOCKED_RESPONSE, "provider": "policy/child_block", "reason": block_reason, "intent": req.intent}
+    scan = await _policy_scan(req.intent, role)
+    if not scan.get("safe", True):
+        return {
+            "response": "I can't process that request.",
+            "provider": "policy/blocked",
+            "reason": scan.get("reason", "policy_denied"),
+            "intent": req.intent,
+        }
+
     memory_prefix = build_memory_prefix(user_id, req.intent)
     augmented_intent = memory_prefix + req.intent if memory_prefix else req.intent
+    if is_child_role(role):
+        augmented_intent = build_child_prompt(augmented_intent, role)
+    news_context = get_news_context(req.intent) if not is_child_role(role) else ""
+    if news_context:
+        augmented_intent = augmented_intent + news_context
 
     if target == "qwen":
         async with httpx.AsyncClient() as client:
@@ -979,7 +1017,7 @@ async def code_write(req: CodeWriteRequest):
         try:
             conn = await asyncpg.connect(
                 host="localhost", port=5432,
-                user="jarvis", password="jarvisdb", database="jarvis"
+                user="jarvis", password=_get_pg_password(), database="jarvis"
             )
             await conn.execute(
                 """INSERT INTO code_write_log
@@ -1015,7 +1053,7 @@ async def code_write(req: CodeWriteRequest):
         try:
             conn = await asyncpg.connect(
                 host="localhost", port=5432,
-                user="jarvis", password="jarvisdb", database="jarvis"
+                user="jarvis", password=_get_pg_password(), database="jarvis"
             )
             await conn.execute(
                 """INSERT INTO code_write_log
@@ -1056,7 +1094,7 @@ async def close_pr(pr_number: int):
 @app.get("/v1/code/log")
 async def code_log(limit: int = 20):
     import asyncpg, os
-    conn = await asyncpg.connect("postgresql://jarvis:jarvisdb@localhost:5432/jarvis")
+    conn = await asyncpg.connect(f"postgresql://jarvis:{_get_pg_password()}@localhost:5432/jarvis")
     rows = await conn.fetch(
         "SELECT ts::text, intent, target_file as file, branch, escalated, success, "
         "validation_lint as lint, validation_security as security "
@@ -1226,3 +1264,79 @@ def memory_delete(memory_id: str, user_id: str):
 def memory_list(user_id: str):
     memories = list_memories(user_id=user_id)
     return {"user_id": user_id, "count": len(memories), "memories": memories}
+
+
+# ---------------------------------------------------------------------------
+# JWT Auth helpers — Phase 7 Block 1
+# Soft validation: if Authorization header present, validate via auth-service.
+# Falls back to user_id parameter for backward compatibility during transition.
+# ---------------------------------------------------------------------------
+
+AUTH_SERVICE_URL = "http://127.0.0.1:8183"
+POLICY_SERVICE_URL = "http://127.0.0.1:8184"
+
+
+async def _policy_scan(text: str, role: str) -> dict:
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=2) as client:
+            r = await client.post(
+                f"{POLICY_SERVICE_URL}/v1/policy/scan",
+                json={"text": text, "role": role}
+            )
+            if r.status_code == 200:
+                return r.json()
+    except Exception:
+        pass
+    return {"safe": True, "reason": "policy_service_unreachable"}
+
+async def _validate_jwt(token: str) -> dict:
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=3) as client:
+            r = await client.post(
+                f"{AUTH_SERVICE_URL}/v1/auth/validate",
+                json={"token": token}
+            )
+            if r.status_code == 200:
+                return r.json()
+    except Exception:
+        pass
+    return {}
+
+async def _resolve_user(
+    req_user_id: str,
+    authorization: str = None
+) -> tuple[str, str]:
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1]
+        payload = await _validate_jwt(token)
+        if payload.get("valid"):
+            return payload["user_id"], payload["role"]
+    return req_user_id or "ken", "unknown"
+
+@app.get("/v1/agent/tasks")
+async def get_agent_tasks():
+    import psycopg2, psycopg2.extras
+    conn = psycopg2.connect("host=localhost port=5432 dbname=jarvis user=jarvisbrain", cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = conn.cursor()
+    cur.execute("SELECT id, task_type, title, status, priority, complexity, assigned_model, left(result,500) as result, error, created_at::text, updated_at::text FROM agent_tasks ORDER BY priority DESC, id ASC")
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return {"tasks": rows}
+
+@app.get("/v1/agent/tasks")
+async def get_agent_tasks():
+    import psycopg2, psycopg2.extras
+    conn = psycopg2.connect("host=localhost port=5432 dbname=jarvis user=jarvisbrain", cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, task_type, title, status, priority, complexity,
+               assigned_model, left(result, 1000) as result, error,
+               created_at::text, updated_at::text, attempted_at::text
+        FROM agent_tasks
+        ORDER BY priority DESC, id ASC
+    """)
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return {"tasks": rows, "ts": __import__('datetime').datetime.utcnow().isoformat()}
