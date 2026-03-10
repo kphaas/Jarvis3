@@ -9,6 +9,14 @@ from sentence_transformers import SentenceTransformer
 logger = logging.getLogger(__name__)
 
 DB_DSN = "host=localhost port=5432 dbname=jarvis user=jarvis password=jarvisdb"
+
+
+def _get_conn_for_user(user_id: str):
+    conn = psycopg2.connect(DB_DSN)
+    cur = conn.cursor()
+    cur.execute("SELECT set_config('jarvis.current_user', %s, false)", (user_id,))
+    cur.close()
+    return conn
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 _model = None
 
@@ -51,7 +59,7 @@ def store_memory(user_id: str, summary: str, memory_type: str = "episodic",
         if ttl_days > 0:
             expires_at = datetime.now(timezone.utc) + timedelta(days=ttl_days)
 
-        with _get_conn() as conn:
+        with _get_conn_for_user(user_id) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     INSERT INTO conversation_memory
@@ -86,7 +94,7 @@ def recall_memories(user_id: str, query: str, top_n: int = 5) -> list:
         return []
     try:
         query_embedding = _embed(query)
-        with _get_conn() as conn:
+        with _get_conn_for_user(user_id) as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
                 cur.execute("""
                     SELECT id, summary, structured_data, memory_type,
@@ -140,7 +148,7 @@ def build_memory_prefix(user_id: str, query: str) -> str:
 
 def delete_memory(memory_id: str, user_id: str) -> bool:
     try:
-        with _get_conn() as conn:
+        with _get_conn_for_user(user_id) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     DELETE FROM conversation_memory
@@ -161,7 +169,7 @@ def delete_memory(memory_id: str, user_id: str) -> bool:
 
 def list_memories(user_id: str) -> list:
     try:
-        with _get_conn() as conn:
+        with _get_conn_for_user(user_id) as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
                 cur.execute("""
                     SELECT id, summary, memory_type, access_count,

@@ -749,6 +749,8 @@ async def ask(req: AskRequest, authorization: str = Header(default=None)):
         getattr(req, "user_id", "ken") or "ken",
         authorization
     )
+    if role == "unknown":
+        raise HTTPException(status_code=401, detail="Authorization required — pass Bearer token")
 
     profile = get_user_profile(user_id)
     role = profile.get("role", role) if profile.get("role", "unknown") != "unknown" else role
