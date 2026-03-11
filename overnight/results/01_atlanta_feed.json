@@ -1,0 +1,9 @@
+{
+  "task": "01_atlanta_feed",
+  "status": "complete",
+  "files_changed": [
+    "overnight/workspace/services/brain/brain/scrape_targets.py"
+  ],
+  "summary": "Fixed atlanta_news feed by replacing broken multi-subreddit URL (r/Atlanta+Alpharetta+JohnsCreek+Roswell/.rss) with https://www.reddit.com/r/atlanta/.rss; feed sources are in services/brain/brain/scrape_targets.py (not feed_fetcher.py as task stated).",
+  "errors": []
+}
