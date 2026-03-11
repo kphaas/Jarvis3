@@ -307,6 +307,9 @@ function useJarvisData() {
       [`${BRAIN}/v1/router/stats`,             "routingStats"],
       [`${BRAIN}/v1/router/decisions?limit=15`,"routingDecisions"],
       [`${BRAIN}/v1/briefing`,                "briefing"],
+      [`${BRAIN}/v1/overnight/runs`,           "overnightRuns"],
+      [`${BRAIN}/v1/overnight/instructions`,   "overnightInstructions"],
+      [`${BRAIN}/v1/overnight/docs`,           "overnightDocs"],
     ];
 
     await Promise.all(fetches.map(async ([url, key]) => {
@@ -343,20 +346,105 @@ function useJarvisData() {
 
   return { data, errors, lastRefresh, refreshing, refresh, countdown };
 }
-
-
-// ── OVERNIGHT TAB ─────────────────────────────────────────────────────────────
 function OvernightTab({ data }) {
+  const runs = data?.overnightRuns || [];
+  const instructions = data?.overnightInstructions || [];
+  const docs = data?.overnightDocs || [];
   const briefing = data?.briefing || {};
   const summaries = briefing.summaries || [];
   const budget = briefing.budget_yesterday || {};
-  const routing = briefing.routing_yesterday || {};
-  const errors = briefing.errors;
+
+  const [newInstruction, setNewInstruction] = useState("");
+  const [replaceMode, setReplaceMode] = useState(null);
+  const [docFile, setDocFile] = useState(null);
+  const [docType, setDocType] = useState("architecture");
+  const [uploadStatus, setUploadStatus] = useState("");
+  const [instrStatus, setInstrStatus] = useState("");
+  const [hearStatus, setHearStatus] = useState("");
+
+  const passCount = runs.filter(r => r.status === "pass").length;
+  const failCount = runs.filter(r => r.status === "fail").length;
+
+  const submitInstruction = async () => {
+    if (!newInstruction.trim()) return;
+    if (replaceMode === null) { setInstrStatus("Please choose Replace or Keep"); return; }
+    try {
+      await fetch(`${BRAIN}/v1/overnight/instructions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instructions: newInstruction, replace_previous: replaceMode })
+      });
+      setNewInstruction("");
+      setReplaceMode(null);
+      setInstrStatus("✅ Saved");
+      setTimeout(() => setInstrStatus(""), 3000);
+    } catch (e) {
+      setInstrStatus("❌ Failed to save");
+    }
+  };
+
+  const deleteInstruction = async (id) => {
+    await fetch(`${BRAIN}/v1/overnight/instructions/${id}`, { method: "DELETE" });
+    setInstrStatus("Deleted");
+    setTimeout(() => setInstrStatus(""), 2000);
+  };
+
+  const uploadDoc = async () => {
+    if (!docFile) { setUploadStatus("No file selected"); return; }
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const content = e.target.result;
+      try {
+        await fetch(`${BRAIN}/v1/overnight/docs`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: docFile.name, content, doc_type: docType })
+        });
+        setUploadStatus("✅ Uploaded: " + docFile.name);
+        setDocFile(null);
+        setTimeout(() => setUploadStatus(""), 4000);
+      } catch (err) {
+        setUploadStatus("❌ Upload failed");
+      }
+    };
+    reader.readAsText(docFile);
+  };
+
+  const deleteDoc = async (id) => {
+    await fetch(`${BRAIN}/v1/overnight/docs/${id}`, { method: "DELETE" });
+    setUploadStatus("Doc deleted");
+    setTimeout(() => setUploadStatus(""), 2000);
+  };
+
+  const hearBriefing = async () => {
+    setHearStatus("⏳ Fetching...");
+    try {
+      const token = localStorage.getItem("jarvis_token") || "";
+      const res = await fetch(`${BRAIN}/v1/briefing`, { headers: { Authorization: `Bearer ${token}` } });
+      const briefData = await res.json();
+      const text = briefData.summary || briefData.text || JSON.stringify(briefData).slice(0, 500);
+      const ttsRes = await fetch("http://100.87.223.31:4002/v1/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, user_id: "ken" })
+      });
+      if (!ttsRes.ok) throw new Error("TTS failed");
+      const blob = await ttsRes.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.play();
+      setHearStatus("🔊 Playing...");
+      audio.onended = () => setHearStatus("");
+    } catch (err) {
+      setHearStatus("❌ " + err.message);
+      setTimeout(() => setHearStatus(""), 4000);
+    }
+  };
 
   return (
     <div className="fade-up" style={{ display: "grid", gap: 16 }}>
       <Card>
-        <SectionLabel>Overnight Agent Run</SectionLabel>
+        <SectionLabel>Overnight Agent — Last Run Stats</SectionLabel>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 16 }}>
           <div style={{ padding: "12px 16px", background: C.surface, borderRadius: 10, border: `1px solid ${C.border}` }}>
             <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace", letterSpacing: 2, marginBottom: 8 }}>YESTERDAY SPEND</div>
@@ -364,31 +452,94 @@ function OvernightTab({ data }) {
             <div style={{ fontSize: 10, color: C.muted, fontFamily: "'DM Mono', monospace", marginTop: 4 }}>{budget.total_calls||0} API calls</div>
           </div>
           <div style={{ padding: "12px 16px", background: C.surface, borderRadius: 10, border: `1px solid ${C.border}` }}>
-            <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace", letterSpacing: 2, marginBottom: 8 }}>TOP ROUTE</div>
-            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 14, color: C.accent, marginBottom: 4 }}>{routing.provider_chosen||"—"}</div>
-            <div style={{ fontSize: 10, color: C.muted, fontFamily: "'DM Mono', monospace" }}>{routing.cnt||0} / {routing.total_decisions||0} decisions</div>
+            <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace", letterSpacing: 2, marginBottom: 8 }}>TASKS PASSED</div>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 24, color: C.green }}>✅ {passCount}</div>
           </div>
           <div style={{ padding: "12px 16px", background: C.surface, borderRadius: 10, border: `1px solid ${C.border}` }}>
-            <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace", letterSpacing: 2, marginBottom: 8 }}>SUMMARIES INGESTED</div>
-            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 24, color: C.blue }}>{summaries.length}</div>
-            <div style={{ fontSize: 10, color: C.muted, fontFamily: "'DM Mono', monospace", marginTop: 4 }}>last 24 hours</div>
+            <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace", letterSpacing: 2, marginBottom: 8 }}>TASKS FAILED</div>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 24, color: C.red }}>❌ {failCount}</div>
           </div>
         </div>
-        {errors && (
-          <div style={{ padding: "10px 14px", background: "#1a0000", border: "1px solid #ff444433", borderRadius: 8, marginBottom: 12 }}>
-            <div style={{ fontSize: 10, color: "#ff4444", fontFamily: "'DM Mono', monospace", letterSpacing: 2, marginBottom: 6 }}>ERRORS</div>
-            {errors.map((e,i) => <div key={i} style={{ fontSize: 11, color: "#ff4444", fontFamily: "'DM Mono', monospace", marginBottom: 4 }}>{e}</div>)}
-          </div>
-        )}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+          <button onClick={hearBriefing} style={{ padding: "8px 18px", background: C.accent, color: "#000", border: "none", borderRadius: 8, fontFamily: "'DM Mono', monospace", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>
+            🔊 Hear Morning Briefing
+          </button>
+          {hearStatus && <span style={{ marginLeft: 12, fontSize: 11, color: C.muted, fontFamily: "'DM Mono', monospace", alignSelf: "center" }}>{hearStatus}</span>}
+        </div>
       </Card>
+
       <Card>
-        <SectionLabel>Recent Summaries</SectionLabel>
-        <div style={{ display: "grid", gap: 10, maxHeight: 500, overflowY: "auto" }}>
-          {summaries.length === 0 && <div style={{ fontSize: 12, color: C.muted, fontFamily: "'DM Mono', monospace" }}>No summaries in last 24 hours</div>}
-          {summaries.map((s,i) => (
-            <div key={s.id||i} style={{ padding: "12px 16px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10 }}>
-              <div style={{ fontSize: 12, color: C.text, fontFamily: "'DM Mono', monospace", lineHeight: 1.6, marginBottom: 6 }}>{s.summary}</div>
-              <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace" }}>{new Date(s.processed_at).toLocaleString()}</div>
+        <SectionLabel>Task Run Log</SectionLabel>
+        <div style={{ display: "grid", gap: 8, maxHeight: 320, overflowY: "auto" }}>
+          {runs.length === 0 && <div style={{ fontSize: 12, color: C.muted, fontFamily: "'DM Mono', monospace" }}>No runs recorded yet</div>}
+          {runs.map((r, i) => (
+            <div key={r.id||i} style={{ display: "grid", gridTemplateColumns: "60px 1fr 80px 70px", gap: 10, padding: "10px 14px", background: C.surface, border: `1px solid ${r.status === "pass" ? "#00ff8833" : "#ff444433"}`, borderRadius: 8, alignItems: "center" }}>
+              <div style={{ fontSize: 18, textAlign: "center" }}>{r.status === "pass" ? "✅" : "❌"}</div>
+              <div>
+                <div style={{ fontSize: 12, color: C.text, fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>{r.task_name}</div>
+                {r.summary && <div style={{ fontSize: 10, color: C.muted, fontFamily: "'DM Mono', monospace", marginTop: 3 }}>{r.summary}</div>}
+              </div>
+              <div style={{ fontSize: 10, color: C.muted, fontFamily: "'DM Mono', monospace" }}>{r.run_date}</div>
+              <div style={{ fontSize: 10, color: C.muted, fontFamily: "'DM Mono', monospace" }}>{r.duration_seconds ? `${r.duration_seconds}s` : "—"}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card>
+        <SectionLabel>Tonight's Instructions</SectionLabel>
+        <div style={{ marginBottom: 12 }}>
+          <textarea
+            value={newInstruction}
+            onChange={e => setNewInstruction(e.target.value)}
+            placeholder="What should JARVIS work on tonight? Be specific."
+            style={{ width: "100%", minHeight: 80, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontFamily: "'DM Mono', monospace", fontSize: 12, padding: 10, resize: "vertical", boxSizing: "border-box" }}
+          />
+          <div style={{ display: "flex", gap: 10, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, color: C.muted, fontFamily: "'DM Mono', monospace" }}>Mode:</span>
+            <button onClick={() => setReplaceMode(true)} style={{ padding: "6px 14px", background: replaceMode === true ? C.accent : C.surface, color: replaceMode === true ? "#000" : C.text, border: `1px solid ${C.border}`, borderRadius: 6, fontFamily: "'DM Mono', monospace", fontSize: 11, cursor: "pointer" }}>Replace Previous</button>
+            <button onClick={() => setReplaceMode(false)} style={{ padding: "6px 14px", background: replaceMode === false ? C.blue : C.surface, color: replaceMode === false ? "#fff" : C.text, border: `1px solid ${C.border}`, borderRadius: 6, fontFamily: "'DM Mono', monospace", fontSize: 11, cursor: "pointer" }}>Keep & Stack</button>
+            <button onClick={submitInstruction} style={{ padding: "6px 18px", background: C.green, color: "#000", border: "none", borderRadius: 6, fontFamily: "'DM Mono', monospace", fontSize: 11, cursor: "pointer", fontWeight: 700, marginLeft: "auto" }}>Save Instruction</button>
+            {instrStatus && <span style={{ fontSize: 11, color: C.muted, fontFamily: "'DM Mono', monospace" }}>{instrStatus}</span>}
+          </div>
+        </div>
+        <div style={{ display: "grid", gap: 8, maxHeight: 200, overflowY: "auto" }}>
+          {instructions.length === 0 && <div style={{ fontSize: 12, color: C.muted, fontFamily: "'DM Mono', monospace" }}>No instructions saved</div>}
+          {instructions.map((instr, i) => (
+            <div key={instr.id||i} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "10px 14px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8 }}>
+              <div>
+                <div style={{ fontSize: 12, color: C.text, fontFamily: "'DM Mono', monospace", lineHeight: 1.5 }}>{instr.instructions}</div>
+                <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace", marginTop: 4 }}>{instr.replace_previous ? "REPLACE" : "STACK"} · {new Date(instr.created_at).toLocaleString()}</div>
+              </div>
+              <button onClick={() => deleteInstruction(instr.id)} style={{ marginLeft: 12, padding: "4px 10px", background: "transparent", color: C.red, border: `1px solid ${C.red}`, borderRadius: 6, fontFamily: "'DM Mono', monospace", fontSize: 10, cursor: "pointer" }}>DEL</button>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card>
+        <SectionLabel>Reference Documents</SectionLabel>
+        <div style={{ display: "flex", gap: 10, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <input type="file" accept=".md,.txt,.pdf,.json" onChange={e => setDocFile(e.target.files[0])} style={{ color: C.text, fontFamily: "'DM Mono', monospace", fontSize: 11, flex: 1 }} />
+          <select value={docType} onChange={e => setDocType(e.target.value)} style={{ padding: "6px 10px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontFamily: "'DM Mono', monospace", fontSize: 11 }}>
+            <option value="architecture">Architecture</option>
+            <option value="handoff">Handoff</option>
+            <option value="design">Design Doc</option>
+            <option value="reference">Reference</option>
+            <option value="other">Other</option>
+          </select>
+          <button onClick={uploadDoc} style={{ padding: "6px 18px", background: C.blue, color: "#fff", border: "none", borderRadius: 6, fontFamily: "'DM Mono', monospace", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>Upload</button>
+          {uploadStatus && <span style={{ fontSize: 11, color: C.muted, fontFamily: "'DM Mono', monospace" }}>{uploadStatus}</span>}
+        </div>
+        <div style={{ display: "grid", gap: 8, maxHeight: 240, overflowY: "auto" }}>
+          {docs.length === 0 && <div style={{ fontSize: 12, color: C.muted, fontFamily: "'DM Mono', monospace" }}>No documents uploaded yet</div>}
+          {docs.map((doc, i) => (
+            <div key={doc.id||i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8 }}>
+              <div>
+                <div style={{ fontSize: 12, color: C.text, fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>{doc.filename}</div>
+                <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace", marginTop: 3 }}>{doc.doc_type.toUpperCase()} · {new Date(doc.uploaded_at).toLocaleString()}</div>
+              </div>
+              <button onClick={() => deleteDoc(doc.id)} style={{ padding: "4px 10px", background: "transparent", color: C.red, border: `1px solid ${C.red}`, borderRadius: 6, fontFamily: "'DM Mono', monospace", fontSize: 10, cursor: "pointer" }}>DEL</button>
             </div>
           ))}
         </div>
