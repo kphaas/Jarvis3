@@ -3,8 +3,18 @@ BUDGET_CENTS=200
 SPENT_CENTS=0
 TASK_DIR=~/jarvis/overnight/tasks
 SUMMARY_LOG=~/jarvis/overnight/logs/run_summary.log
+BRAIN=100.64.166.22
+CLAUDE_MD=~/jarvis/CLAUDE.md
 
 echo "=== JARVIS overnight run started $(date) ===" >> $SUMMARY_LOG
+
+echo "Fetching context from Brain..." >> $SUMMARY_LOG
+CONTEXT=$(curl -s http://$BRAIN:8182/v1/overnight/claude_md)
+if echo "$CONTEXT" | python3 -c "import sys,json; d=json.load(sys.stdin); open('$CLAUDE_MD','w').write(d['claude_md'])" 2>/dev/null; then
+  echo "CLAUDE.md written successfully" >> $SUMMARY_LOG
+else
+  echo "WARNING: Could not fetch context from Brain — using existing CLAUDE.md" >> $SUMMARY_LOG
+fi
 
 for TASK_FILE in $TASK_DIR/*.md; do
   [ -f "$TASK_FILE" ] || continue
