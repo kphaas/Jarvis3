@@ -35,7 +35,7 @@ SCRAPE_TARGETS = {
         "prompt": "Summarize the latest AI news in 3 sentences:"
     },
     "atlanta_news": {
-        "url": "https://www.reddit.com/r/Atlanta+Alpharetta+JohnsCreek+Roswell/.rss",
+        "url": "https://www.reddit.com/r/atlanta/.rss",
         "keywords": ["atlanta", "alpharetta", "johns creek", "roswell", "local news", "georgia news"],
         "prompt": "Summarize the latest local Atlanta area news in 3 sentences:"
     },

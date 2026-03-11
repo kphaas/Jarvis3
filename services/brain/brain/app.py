@@ -1225,6 +1225,8 @@ async def circuit_thresholds(req: CircuitThresholds):
 
 from brain.costs import router as costs_router
 app.include_router(costs_router)
+from brain.morning_briefing import router as briefing_router
+app.include_router(briefing_router)
 
 
 from brain.memory_service import (
