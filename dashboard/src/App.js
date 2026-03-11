@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 // ── CONFIG ─────────────────────────────────────────────────────────────────────
 const BRAIN    = "http://100.64.166.22:8182";
 const GATEWAY  = "http://100.112.63.25:8282";
-const ENDPOINT = "http://100.87.223.31:3000";
+const ENDPOINT = "http://100.87.223.31:4001";
 const REFRESH_S = 30;
 
 // ── DESIGN TOKENS ──────────────────────────────────────────────────────────────
@@ -270,15 +270,20 @@ function MonoInput({ value, onChange, placeholder, type = "text", style = {} }) 
 
 // ── API LAYER ──────────────────────────────────────────────────────────────────
 async function apiFetch(url, opts = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
   try {
     const r = await fetch(url, {
       ...opts,
+      signal: controller.signal,
       headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
     });
+    clearTimeout(timer);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return [await r.json(), null];
   } catch (e) {
-    return [null, e.message];
+    clearTimeout(timer);
+    return [null, e.name === "AbortError" ? "timeout" : e.message];
   }
 }
 
@@ -755,7 +760,7 @@ function HealthTab({ data, errors }) {
   const nodes = [
     { key: "brain",    label: "BRAIN",    host: "100.64.166.22", port: 8182, metrics: data?.brainMetrics, err: errors.brainMetrics },
     { key: "gateway",  label: "GATEWAY",  host: "100.112.63.25", port: 8282, metrics: data?.gwMetrics,    err: errors.gwMetrics },
-    { key: "endpoint", label: "ENDPOINT", host: "100.87.223.31",  port: 3000, metrics: data?.epMetrics,    err: errors.epMetrics },
+    { key: "endpoint", label: "ENDPOINT", host: "100.87.223.31",  port: 4001, metrics: data?.epMetrics,    err: errors.epMetrics },
   ];
 
   const handleRestart = async nodeKey => {
@@ -1245,7 +1250,7 @@ function SecurityTab({ data }) {
   const nodes = [
     { label: "Brain",    ip: "100.64.166.22", port: 8182, ok: !!data?.brainMetrics },
     { label: "Gateway",  ip: "100.112.63.25", port: 8282, ok: !!data?.gwMetrics },
-    { label: "Endpoint", ip: "100.87.223.31",  port: 3000, ok: !!data?.epMetrics },
+    { label: "Endpoint", ip: "100.87.223.31",  port: 4001, ok: !!data?.epMetrics },
   ];
 
   const knownKeys = [
@@ -1260,7 +1265,7 @@ function SecurityTab({ data }) {
   const ports = [
     { port: 8182,  service: "Brain API",     node: "Brain",    status: "OPEN" },
     { port: 8282,  service: "Gateway API",   node: "Gateway",  status: "OPEN" },
-    { port: 3000,  service: "Endpoint API",  node: "Endpoint", status: "OPEN" },
+    { port: 4001,  service: "Endpoint API",  node: "Endpoint", status: "OPEN" },
     { port: 5432,  service: "Postgres",      node: "Brain",    status: "OPEN" },
     { port: 11434, service: "Ollama",        node: "Endpoint", status: "OPEN" },
     { port: 22,    service: "SSH",           node: "All",      status: "OPEN" },

@@ -171,3 +171,28 @@ async def brain_health():
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "voice"}
+
+@app.get("/v1/metrics")
+def metrics():
+    import psutil
+    return {
+        "cpu_pct": psutil.cpu_percent(interval=0.1),
+        "ram_pct": psutil.virtual_memory().percent,
+        "ram_used_gb": round(psutil.virtual_memory().used / 1e9, 2),
+        "ram_total_gb": round(psutil.virtual_memory().total / 1e9, 2),
+        "disk_pct": psutil.disk_usage("/").percent,
+        "disk_used_gb": round(psutil.disk_usage("/").used / 1e9, 2),
+        "disk_total_gb": round(psutil.disk_usage("/").total / 1e9, 2),
+        "load_avg": " ".join(str(round(x, 2)) for x in psutil.getloadavg()),
+        "process_count": len(psutil.pids()),
+    }
+
+@app.get("/v1/local/health")
+def local_health():
+    try:
+        import httpx
+        r = httpx.get("http://127.0.0.1:11434/api/tags", timeout=3)
+        models = [m["name"] for m in r.json().get("models", [])]
+        return {"ollama": "ok", "models": models}
+    except Exception:
+        return {"ollama": "unreachable", "models": []}
