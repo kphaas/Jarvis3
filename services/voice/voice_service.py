@@ -167,3 +167,7 @@ async def brain_health():
             return {"ok": r.status_code == 200}
     except Exception:
         return {"ok": False}
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "voice"}
