@@ -1227,118 +1227,23 @@ from brain.costs import router as costs_router
 app.include_router(costs_router)
 
 
-from brain.memory_service import (
-    store_memory, recall_memories, delete_memory,
-    list_memories, queue_summarize_job, build_memory_prefix
-)
-
-class MemoryStoreRequest(BaseModel):
-    user_id: str
-    summary: str
-    memory_type: str = "episodic"
-    structured_data: Optional[dict] = None
-
-@app.post("/v1/memory/store")
-def memory_store(req: MemoryStoreRequest):
-    memory_id = store_memory(
-        user_id=req.user_id,
-        summary=req.summary,
-        memory_type=req.memory_type,
-        structured_data=req.structured_data,
-    )
-    if memory_id is None:
-        raise HTTPException(status_code=400, detail="Memory not stored")
-    return {"memory_id": memory_id, "status": "stored"}
-
-@app.get("/v1/memory/recall")
-def memory_recall(user_id: str, query: str, top_n: int = 5):
-    memories = recall_memories(user_id=user_id, query=query, top_n=top_n)
-    return {"user_id": user_id, "count": len(memories), "memories": memories}
-
-@app.delete("/v1/memory/{memory_id}")
-def memory_delete(memory_id: str, user_id: str):
-    deleted = delete_memory(memory_id=memory_id, user_id=user_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Memory not found")
-    return {"memory_id": memory_id, "status": "deleted"}
-
-@app.get("/v1/memory/list")
-def memory_list(user_id: str):
-    memories = list_memories(user_id=user_id)
-    return {"user_id": user_id, "count": len(memories), "memories": memories}
-
-
-# ---------------------------------------------------------------------------
-# JWT Auth helpers — Phase 7 Block 1
-# Soft validation: if Authorization header present, validate via auth-service.
-# Falls back to user_id parameter for backward compatibility during transition.
-# ---------------------------------------------------------------------------
-
-AUTH_SERVICE_URL = "http://127.0.0.1:8183"
-POLICY_SERVICE_URL = "http://127.0.0.1:8184"
-
-
-async def _policy_scan(text: str, role: str) -> dict:
-    import httpx
-    try:
-        async with httpx.AsyncClient(timeout=2) as client:
-            r = await client.post(
-                f"{POLICY_SERVICE_URL}/v1/policy/scan",
-                json={"text": text, "role": role}
-            )
-            if r.status_code == 200:
-                return r.json()
-    except Exception:
-        pass
-    return {"safe": True, "reason": "policy_service_unreachable"}
-
-async def _validate_jwt(token: str) -> dict:
-    import httpx
-    try:
-        async with httpx.AsyncClient(timeout=3) as client:
-            r = await client.post(
-                f"{AUTH_SERVICE_URL}/v1/auth/validate",
-                json={"token": token}
-            )
-            if r.status_code == 200:
-                return r.json()
-    except Exception:
-        pass
-    return {}
-
-async def _resolve_user(
-    req_user_id: str,
-    authorization: str = None
-) -> tuple[str, str]:
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ", 1)[1]
-        payload = await _validate_jwt(token)
-        if payload.get("valid"):
-            return payload["user_id"], payload["role"]
-    return req_user_id or "ken", "unknown"
-
-@app.get("/v1/agent/tasks")
-async def get_agent_tasks():
-    import psycopg2, psycopg2.extras
-    conn = psycopg2.connect("host=localhost port=5432 dbname=jarvis user=jarvisbrain", cursor_factory=psycopg2.extras.RealDictCursor)
-    cur = conn.cursor()
-    cur.execute("SELECT id, task_type, title, status, priority, complexity, assigned_model, left(result,500) as result, error, created_at::text, updated_at::text FROM agent_tasks ORDER BY priority DESC, id ASC")
-    rows = [dict(r) for r in cur.fetchall()]
-    conn.close()
-    return {"tasks": rows}
-
-@app.get("/v1/agent/tasks")
-async def get_agent_tasks():
-    import psycopg2, psycopg2.extras
-    conn = psycopg2.connect("host=localhost port=5432 dbname=jarvis user=jarvisbrain", cursor_factory=psycopg2.extras.RealDictCursor)
+@app.post("/v1/agent/queue")
+async def queue_agent_task(body: dict):
+    import psycopg2
+    conn = psycopg2.connect("host=localhost port=5432 dbname=jarvis user=jarvisbrain")
     cur = conn.cursor()
     cur.execute("""
-        SELECT id, task_type, title, status, priority, complexity,
-               assigned_model, left(result, 1000) as result, error,
-               created_at::text, updated_at::text, attempted_at::text
-        FROM agent_tasks
-        ORDER BY priority DESC, id ASC
-    """)
-    rows = [dict(r) for r in cur.fetchall()]
+        INSERT INTO agent_tasks (task_type, title, payload, priority, complexity)
+        VALUES (%s, %s, %s, %s, %s) RETURNING id
+    """, (
+        body.get("task_type","research"),
+        body.get("title",""),
+        __import__('json').dumps(body.get("payload",{})),
+        body.get("priority",5),
+        body.get("complexity",2)
+    ))
+    row = cur.fetchone()
+    conn.commit()
     conn.close()
-    return {"tasks": rows, "ts": __import__('datetime').datetime.utcnow().isoformat()}
+    return {"id": row[0], "status": "queued"}
+

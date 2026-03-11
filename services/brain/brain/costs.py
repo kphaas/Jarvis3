@@ -63,6 +63,11 @@ async def get_costs():
     daily_spent   = float(today["spent"])
     weekly_spent  = float(this_week["spent"])
     monthly_spent = float(this_month["spent"])
+    all_time_spent = float(total["total"])
+
+    credit_balance = limits_map.get("credit_balance", 0.0)
+    credit_remaining = round(max(0, credit_balance - all_time_spent), 4)
+    credit_pct_used = round(all_time_spent / credit_balance * 100, 1) if credit_balance > 0 else 0
 
     budget = {
         "daily": {
@@ -95,16 +100,28 @@ async def get_costs():
         elif data["pct_used"] >= 75:
             alerts.append(f"WARNING: {period} budget {data['pct_used']}% used (${data['spent_usd']:.4f} of ${data['limit_usd']})")
 
+    if credit_remaining <= 2.00:
+        alerts.append(f"CRITICAL: Anthropic credit balance low — ${credit_remaining:.2f} remaining")
+    elif credit_remaining <= 5.00:
+        alerts.append(f"WARNING: Anthropic credit balance — ${credit_remaining:.2f} remaining")
+
     return {
-        "alerts":        alerts,
-        "budget":        budget,
+        "alerts":  alerts,
+        "budget":  budget,
+        "credit": {
+            "balance_usd":   round(credit_balance, 2),
+            "spent_usd":     round(all_time_spent, 6),
+            "remaining_usd": credit_remaining,
+            "pct_used":      credit_pct_used,
+            "low_balance":   credit_remaining <= 2.00
+        },
         "averages": {
             "daily_avg_usd":   round(float(daily_avg["avg"]), 6),
             "weekly_avg_usd":  round(float(weekly_avg["avg"]), 6),
             "monthly_avg_usd": round(float(monthly_avg["avg"]), 6),
         },
         "totals": {
-            "all_time_usd": round(float(total["total"]), 6),
+            "all_time_usd":   round(all_time_spent, 6),
             "all_time_calls": total["calls"]
         },
         "by_provider": [dict(r) for r in by_provider],
@@ -122,3 +139,13 @@ async def set_budget(period: str, limit_usd: float):
     )
     await conn.close()
     return {"status": "ok", "period": period, "limit_usd": limit_usd}
+
+@router.post("/v1/costs/credit")
+async def set_credit(balance_usd: float):
+    conn = await asyncpg.connect(DB_DSN)
+    await conn.execute(
+        "INSERT INTO budget_config (period, limit_usd, updated_at) VALUES ('credit_balance',$1,NOW()) ON CONFLICT (period) DO UPDATE SET limit_usd=$1, updated_at=NOW()",
+        balance_usd
+    )
+    await conn.close()
+    return {"status": "ok", "credit_balance_usd": balance_usd}
