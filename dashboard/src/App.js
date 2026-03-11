@@ -306,6 +306,7 @@ function useJarvisData() {
       [`${ENDPOINT}/v1/local/health`,          "ollamaHealth"],
       [`${BRAIN}/v1/router/stats`,             "routingStats"],
       [`${BRAIN}/v1/router/decisions?limit=15`,"routingDecisions"],
+      [`${BRAIN}/v1/briefing`,                "briefing"],
     ];
 
     await Promise.all(fetches.map(async ([url, key]) => {
@@ -343,6 +344,59 @@ function useJarvisData() {
   return { data, errors, lastRefresh, refreshing, refresh, countdown };
 }
 
+
+// ── OVERNIGHT TAB ─────────────────────────────────────────────────────────────
+function OvernightTab({ data }) {
+  const briefing = data?.briefing || {};
+  const summaries = briefing.summaries || [];
+  const budget = briefing.budget_yesterday || {};
+  const routing = briefing.routing_yesterday || {};
+  const errors = briefing.errors;
+
+  return (
+    <div className="fade-up" style={{ display: "grid", gap: 16 }}>
+      <Card>
+        <SectionLabel>Overnight Agent Run</SectionLabel>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 16 }}>
+          <div style={{ padding: "12px 16px", background: C.surface, borderRadius: 10, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace", letterSpacing: 2, marginBottom: 8 }}>YESTERDAY SPEND</div>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 24, color: C.green }}>${parseFloat(budget.total_spend||0).toFixed(4)}</div>
+            <div style={{ fontSize: 10, color: C.muted, fontFamily: "'DM Mono', monospace", marginTop: 4 }}>{budget.total_calls||0} API calls</div>
+          </div>
+          <div style={{ padding: "12px 16px", background: C.surface, borderRadius: 10, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace", letterSpacing: 2, marginBottom: 8 }}>TOP ROUTE</div>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 14, color: C.accent, marginBottom: 4 }}>{routing.provider_chosen||"—"}</div>
+            <div style={{ fontSize: 10, color: C.muted, fontFamily: "'DM Mono', monospace" }}>{routing.cnt||0} / {routing.total_decisions||0} decisions</div>
+          </div>
+          <div style={{ padding: "12px 16px", background: C.surface, borderRadius: 10, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace", letterSpacing: 2, marginBottom: 8 }}>SUMMARIES INGESTED</div>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 24, color: C.blue }}>{summaries.length}</div>
+            <div style={{ fontSize: 10, color: C.muted, fontFamily: "'DM Mono', monospace", marginTop: 4 }}>last 24 hours</div>
+          </div>
+        </div>
+        {errors && (
+          <div style={{ padding: "10px 14px", background: "#1a0000", border: "1px solid #ff444433", borderRadius: 8, marginBottom: 12 }}>
+            <div style={{ fontSize: 10, color: "#ff4444", fontFamily: "'DM Mono', monospace", letterSpacing: 2, marginBottom: 6 }}>ERRORS</div>
+            {errors.map((e,i) => <div key={i} style={{ fontSize: 11, color: "#ff4444", fontFamily: "'DM Mono', monospace", marginBottom: 4 }}>{e}</div>)}
+          </div>
+        )}
+      </Card>
+      <Card>
+        <SectionLabel>Recent Summaries</SectionLabel>
+        <div style={{ display: "grid", gap: 10, maxHeight: 500, overflowY: "auto" }}>
+          {summaries.length === 0 && <div style={{ fontSize: 12, color: C.muted, fontFamily: "'DM Mono', monospace" }}>No summaries in last 24 hours</div>}
+          {summaries.map((s,i) => (
+            <div key={s.id||i} style={{ padding: "12px 16px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10 }}>
+              <div style={{ fontSize: 12, color: C.text, fontFamily: "'DM Mono', monospace", lineHeight: 1.6, marginBottom: 6 }}>{s.summary}</div>
+              <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace" }}>{new Date(s.processed_at).toLocaleString()}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 // ── SUMMARY TAB ────────────────────────────────────────────────────────────────
 function SummaryTab({ data, errors }) {
   const costs        = data?.costs || {};
@@ -363,6 +417,10 @@ function SummaryTab({ data, errors }) {
   ];
   const nodesOnline = nodes.filter(n => n.metrics && !n.err).length;
   const activeAgents = agents.filter(a => a.status === "ACTIVE").length;
+  const briefing = data?.briefing || {};
+  const briefingSummaries = briefing.summaries || [];
+  const budgetYesterday = briefing.budget_yesterday || {};
+  const routingYesterday = briefing.routing_yesterday || {};
 
   return (
     <div className="fade-up" style={{ display: "grid", gap: 16 }}>
@@ -372,6 +430,38 @@ function SummaryTab({ data, errors }) {
         <StatCard label="Today Spend"   value={`$${(daily?.spent_usd||0).toFixed(4)}`} color={dailyPct>=90?C.red:dailyPct>=75?C.amber:C.green} icon="💰" sub={`of $${(daily?.limit_usd||0).toFixed(2)} limit`} />
         <StatCard label="Active Agents" value={activeAgents}           color={C.blue}   icon="🤖" />
         <StatCard label="Models Loaded" value={ollamaHealth?.model_count ?? "—"} color={C.accent} icon="⚡" sub="on Endpoint" />
+      </div>
+      {briefingSummaries.length > 0 && (
+        <Card>
+          <SectionLabel>Morning Briefing</SectionLabel>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 14 }}>
+            <div style={{ padding: "10px 14px", background: C.surface, borderRadius: 8, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace", letterSpacing: 2, marginBottom: 6 }}>YESTERDAY SPEND</div>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, color: C.green }}>${parseFloat(budgetYesterday.total_spend||0).toFixed(4)}</div>
+              <div style={{ fontSize: 10, color: C.muted, fontFamily: "'DM Mono', monospace", marginTop: 4 }}>{budgetYesterday.total_calls||0} calls</div>
+            </div>
+            <div style={{ padding: "10px 14px", background: C.surface, borderRadius: 8, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace", letterSpacing: 2, marginBottom: 6 }}>TOP PROVIDER</div>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 14, color: C.accent }}>{routingYesterday.provider_chosen||"—"}</div>
+              <div style={{ fontSize: 10, color: C.muted, fontFamily: "'DM Mono', monospace", marginTop: 4 }}>{routingYesterday.cnt||0} of {routingYesterday.total_decisions||0} decisions</div>
+            </div>
+            <div style={{ padding: "10px 14px", background: C.surface, borderRadius: 8, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace", letterSpacing: 2, marginBottom: 6 }}>SUMMARIES</div>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, color: C.blue }}>{briefingSummaries.length}</div>
+              <div style={{ fontSize: 10, color: C.muted, fontFamily: "'DM Mono', monospace", marginTop: 4 }}>last 24 hours</div>
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 8, maxHeight: 200, overflowY: "auto" }}>
+            {briefingSummaries.slice(0,5).map((s,i) => (
+              <div key={s.id||i} style={{ padding: "10px 14px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8 }}>
+                <div style={{ fontSize: 11, color: C.text, fontFamily: "'DM Mono', monospace", lineHeight: 1.5 }}>{s.summary}</div>
+                <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace", marginTop: 4 }}>{new Date(s.processed_at).toLocaleTimeString()}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
@@ -679,6 +769,7 @@ function ElectricityCost({ data }) {
 
 function CostTab({ data, errors }) {
   const costs = data?.costs || {};
+  const creditData2 = costs.credit || {};
   const [editing, setEditing]     = useState(false);
   const [budgetForm, setBudgetForm] = useState({ daily: "", weekly: "", monthly: "" });
   const [saving, setSaving]       = useState(false);
@@ -727,6 +818,29 @@ function CostTab({ data, errors }) {
           );
         })}
       </div>
+
+      <Card status={creditData2?.low_balance ? "error" : creditData2?.pct_used >= 75 ? "warn" : "ok"}>
+        <SectionLabel>Anthropic API Credit Balance</SectionLabel>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace", letterSpacing: 2, marginBottom: 6 }}>STARTING BALANCE</div>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 22, color: C.text }}>${(creditData2?.balance_usd||0).toFixed(2)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace", letterSpacing: 2, marginBottom: 6 }}>TOTAL SPENT</div>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 22, color: C.amber }}>${(creditData2?.spent_usd||0).toFixed(4)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace", letterSpacing: 2, marginBottom: 6 }}>REMAINING</div>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 22, color: creditData2?.low_balance ? C.red : C.green }}>${(creditData2?.remaining_usd||0).toFixed(2)}</div>
+          </div>
+        </div>
+        <div style={{ marginBottom: 10 }}><Bar pct={creditData2?.pct_used||0} height={6} /></div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: C.muted, fontFamily: "'DM Mono', monospace" }}>
+          <span>{(creditData2?.pct_used||0).toFixed(2)}% used · warns at $5.00 · critical at $2.00</span>
+          <span style={{ color: C.muted }}>update: <code style={{ color: C.accent }}>POST /v1/costs/credit?balance_usd=XX</code></span>
+        </div>
+      </Card>
 
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
@@ -1577,6 +1691,7 @@ export default function App() {
     { id: "security", label: "Security",  icon: "🔒" },
     { id: "routing",  label: "Routing",   icon: "🔀" },
     { id: "user",     label: "User",      icon: "👤" },
+    { id: "overnight", label: "Overnight", icon: "🌙" },
   ];
 
   const nodes = [
@@ -1588,6 +1703,8 @@ export default function App() {
   const daily      = data?.costs?.budget?.daily;
   const errorCount = Object.keys(errors).length;
   const hasAlerts  = errorCount > 0;
+  const creditData  = data?.costs?.credit || {};
+  const lowCredit   = creditData.low_balance === true;
 
   const tabBadge = id => {
     if (id === "errors"  && errorCount > 0) return errorCount;
@@ -1600,7 +1717,7 @@ export default function App() {
       <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: C.bg }}>
 
         {/* Alert bar */}
-        {hasAlerts && (
+        {(hasAlerts || lowCredit) && (
           <div style={{
             background: C.redDim, borderBottom: `1px solid ${C.red}44`,
             padding: "5px 24px", fontSize: 11, color: C.red,
@@ -1608,6 +1725,7 @@ export default function App() {
             display: "flex", alignItems: "center", gap: 12,
           }}>
             <span>⚠</span>
+            {lowCredit && <span style={{ color: "#ff4444", fontWeight: 700 }}>ANTHROPIC CREDIT LOW: ${creditData.remaining_usd?.toFixed(2)} remaining — top up at console.anthropic.com</span>}
             <span>{errorCount} endpoint(s) unreachable: {Object.keys(errors).slice(0,4).join(", ")}{errorCount>4?" …":""}</span>
             <span style={{ marginLeft: "auto", color: C.muted }}>Check Errors tab for details</span>
           </div>
@@ -1699,6 +1817,7 @@ export default function App() {
           {tab === "security" && <SecurityTab   data={data} />}
           {tab === "routing"  && <RoutingTab    data={data} errors={errors} />}
           {tab === "user"     && <UserTab />}
+          {tab === "overnight" && <OvernightTab data={data} errors={errors} />}
         </main>
 
         {/* Footer */}
