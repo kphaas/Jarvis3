@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 BRAIN_URL = "http://100.64.166.22:8182"
 AUTH_URL = "http://100.64.166.22:8183"
-WHISPER_MODEL = "base"
+WHISPER_MODEL = "small"
 
 app = FastAPI(title="JARVIS Voice Service")
 
@@ -105,16 +105,28 @@ async def transcribe(audio: UploadFile = File(...)):
     with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
         tmp.write(data)
         tmp_path = tmp.name
+    wav_path = tmp_path.replace(".webm", ".wav")
     try:
+        import subprocess
+        result = subprocess.run(["/opt/homebrew/bin/ffmpeg", "-y", "-i", tmp_path, "-ar", "16000", "-ac", "1", wav_path],
+            capture_output=True)
+        import os, sys
+        print(f"FFMPEG rc={result.returncode} webm_size={os.path.getsize(tmp_path)} stderr={result.stderr[-200:].decode()}", file=sys.stderr, flush=True)
         model = get_whisper()
-        segments, info = model.transcribe(tmp_path, beam_size=5, language="en")
+        import shutil; shutil.copy(wav_path, "/tmp/jarvis_last.wav")
+        segments, info = model.transcribe(wav_path, beam_size=5, language="en", vad_filter=True, condition_on_previous_text=False)
         text = " ".join(s.text.strip() for s in segments).strip()
         return {"text": text, "language": info.language}
     except Exception as e:
+        print(f"[VOICE] Avatar Exception: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         try:
             os.unlink(tmp_path)
+        except Exception:
+            pass
+        try:
+            os.unlink(wav_path)
         except Exception:
             pass
 
@@ -123,15 +135,62 @@ async def speak(request: Request):
     body = await request.json()
     text = body.get("text", "").strip()
     user = body.get("user", "ken").lower()
+    voice = body.get("voice")
+    speed = body.get("speed", 1.0)
+    
     if not text:
         raise HTTPException(status_code=400, detail="no text")
-    voice = VOICE_MAP.get(user, "Alex")
+    
+    AVATAR_URL = "http://100.87.223.31:4002"
+    import sys
     try:
-        subprocess.run(["say", "-v", voice, text], timeout=120, check=True)
-        return {"status": "ok", "voice": voice, "chars": len(text)}
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="say timed out")
+        print(f"[VOICE] Attempting Avatar TTS: user={user}, voice={voice}, speed={speed}", file=sys.stderr, flush=True)
+        async with httpx.AsyncClient(timeout=30) as client:
+            payload = {
+                "text": text,
+                "user_id": user,
+                "speed": speed,
+                "play_local": False
+            }
+            if voice:
+                payload["voice"] = voice
+            
+            resp = await client.post(
+                f"{AVATAR_URL}/v1/avatar/speak/stream",
+                json=payload
+            )
+            if resp.status_code != 200:
+                raise HTTPException(status_code=resp.status_code, detail="Avatar TTS failed")
+            
+            wav_bytes = resp.content
+            tmp_path = f"/tmp/jarvis_tts_{user}.wav"
+            with open(tmp_path, "wb") as f:
+                f.write(wav_bytes)
+            
+            subprocess.Popen(
+                ["afplay", tmp_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            
+            return {
+                "status": "ok",
+                "voice": resp.headers.get("X-Voice", "unknown"),
+                "chars": len(text),
+                "backend": "kokoro-avatar"
+            }
+    except httpx.ConnectError as ce:
+        print(f"[VOICE] Avatar ConnectError: {ce}, falling back to macOS say", file=sys.stderr, flush=True)
+        voice_fallback = VOICE_MAP.get(user, "Alex")
+        subprocess.run(["say", "-v", voice_fallback, text], timeout=120, check=True)
+        return {
+            "status": "ok",
+            "voice": voice_fallback,
+            "chars": len(text),
+            "backend": "macos-say-fallback"
+        }
     except Exception as e:
+        print(f"[VOICE] Avatar Exception: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/v1/voice/ask")
@@ -157,6 +216,7 @@ async def ask_brain(request: Request):
     except httpx.ConnectError:
         raise HTTPException(status_code=503, detail="brain unreachable")
     except Exception as e:
+        print(f"[VOICE] Avatar Exception: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/v1/voice/brain-health")

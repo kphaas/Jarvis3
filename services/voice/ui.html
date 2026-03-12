@@ -79,6 +79,10 @@ header{width:100%;max-width:720px;display:flex;align-items:center;justify-conten
     <button class="user-btn" id="btn-guest" onclick="switchUser('guest')">Guest</button>
   </div>
 </header>
+<div style="position:fixed;top:80px;right:24px;z-index:10">
+  <canvas id="avatarCanvas" width="120" height="120" style="border-radius:12px;border:1px solid #1e1e1e;background:#0d0d0d;display:block"></canvas>
+  <div id="avatarStatus" style="text-align:center;font-size:9px;color:#555;margin-top:6px;letter-spacing:2px">IDLE</div>
+</div>
 <div class="user-indicator" id="userIndicator">not authenticated</div>
 <div class="status-row">
   <div class="sp" id="sw">● whisper</div>
@@ -86,9 +90,24 @@ header{width:100%;max-width:720px;display:flex;align-items:center;justify-conten
   <div class="sp" id="sf">● ffmpeg</div>
   <div class="sp" id="sb">● brain</div>
 </div>
+<div class="voice-controls" style="width:100%;max-width:720px;margin-bottom:20px;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+  <div style="flex:1;min-width:240px">
+    <label style="font-size:10px;color:#555;letter-spacing:2px;margin-bottom:6px;display:block">VOICE</label>
+    <select id="voiceSelect" style="width:100%;background:#111;border:1px solid #333;color:#ccc;padding:10px 12px;border-radius:8px;font-family:'DM Mono',monospace;font-size:12px;outline:none">
+      <option value="">Loading voices...</option>
+    </select>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <label style="font-size:10px;color:#555;letter-spacing:2px">SPEED: <span id="speedVal">1.0</span>x</label>
+    <input type="range" id="speedRange" min="0.5" max="2.0" step="0.1" value="1.0" style="width:120px;accent-color:#c6f135">
+  </div>
+  <button id="saveVoiceBtn" style="background:transparent;border:1px solid #333;color:#555;padding:10px 18px;border-radius:8px;font-family:'DM Mono',monospace;font-size:11px;cursor:pointer;letter-spacing:1px">Save Voice</button>
+  <button id="testVoiceBtn" style="background:rgba(198,241,53,0.1);border:1px solid rgba(198,241,53,0.3);color:#c6f135;padding:10px 18px;border-radius:8px;font-family:'DM Mono',monospace;font-size:11px;cursor:pointer;letter-spacing:1px">Test</button>
+</div>
 <div class="mic-area">
   <div class="mic-ring">
     <div class="mic-pulse" id="pulse"></div>
+    <select id="micSelect" style="background:#1a1a1a;color:#aaa;border:1px solid #333;border-radius:6px;padding:4px 8px;font-size:11px;margin-bottom:8px;width:260px"><option value="">Default Mic</option></select>
     <button class="mic-btn" id="micBtn" onclick="toggleRec()">🎤</button>
   </div>
   <div class="mic-label" id="micLbl">select a user to begin</div>
@@ -202,11 +221,28 @@ async function checkStatus(){
 }
 function pill(id,ok,lbl){const el=document.getElementById(id);el.textContent=(ok?'● ':'○ ')+lbl;el.className='sp '+(ok?'ok':'err')}
 
+async function populateMics(){
+  try{
+    await navigator.mediaDevices.getUserMedia({audio:true});
+    const devices=await navigator.mediaDevices.enumerateDevices();
+    const sel=document.getElementById("micSelect");
+    devices.filter(d=>d.kind==="audioinput").forEach(d=>{
+      const opt=document.createElement("option");
+      opt.value=d.deviceId;opt.textContent=d.label||"Mic "+d.deviceId.slice(0,8);
+      if(d.label.toLowerCase().includes("fifine"))opt.selected=true;
+      sel.appendChild(opt);
+    });
+  }catch(e){}
+}
+populateMics();
+
 async function toggleRec(){
   if(!user){showErr('Select a user first');return}
   if(recording){mr&&mr.stop();return}
   try{
-    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    const micId=document.getElementById("micSelect")?.value||null;
+    const audioConstraint=micId?{deviceId:{exact:micId}}:true;
+    const stream=await navigator.mediaDevices.getUserMedia({audio:audioConstraint});
     chunks=[];mr=new MediaRecorder(stream);
     mr.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data)};
     mr.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());await doTranscribe(new Blob(chunks,{type:'audio/webm'}))};
@@ -239,7 +275,7 @@ async function sendJarvis(txt){
   if(!user){showErr('Select a user first');return}
   setLoad(true);
   try{
-    const d=await(await fetch('/v1/voice/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({intent:txt,user})})).json();
+    const d=await(await fetch('/v1/voice/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({intent:txt,user,complexity:2})})).json();
     if(d.detail==='Authorization required --- pass Bearer token'){
       authedUsers.delete(user);showErr('Session expired — please re-authenticate');setLoad(false);return;
     }
@@ -294,8 +330,225 @@ function setLoad(on){
   document.getElementById('sendBtn').disabled=on;
 }
 
-checkStatus();setInterval(checkStatus,30000);
+// Voice management
+const AVATAR_URL = 'http://100.87.223.31:4002';
+let allVoices = [];
+let voiceDescs = {};
+let currentVoice = null;
+
+async function loadVoices() {
+  try {
+    const r = await fetch(`${AVATAR_URL}/v1/avatar/voices`);
+    const d = await r.json();
+    allVoices = d.voices || [];
+    voiceDescs = d.descriptions || {};
+    const sel = document.getElementById('voiceSelect');
+    sel.innerHTML = '';
+    allVoices.forEach(v => {
+      const o = document.createElement('option');
+      o.value = v;
+      o.textContent = voiceDescs[v] || v;
+      sel.appendChild(o);
+    });
+    await loadUserVoice();
+  } catch(e) { console.warn('Could not load voices', e); }
+}
+
+async function loadUserVoice() {
+  if (!user) return;
+  try {
+    const r = await fetch(`${AVATAR_URL}/v1/avatar/voice/${user}`);
+    const d = await r.json();
+    currentVoice = d.voice;
+    document.getElementById('voiceSelect').value = currentVoice;
+  } catch(e) { console.warn('Could not load user voice', e); }
+}
+
+document.getElementById('voiceSelect').addEventListener('change', e => {
+  currentVoice = e.target.value;
+});
+
+document.getElementById('speedRange').addEventListener('input', e => {
+  document.getElementById('speedVal').textContent = parseFloat(e.target.value).toFixed(1);
+});
+
+document.getElementById('saveVoiceBtn').addEventListener('click', async () => {
+  if (!user || !currentVoice) return;
+  try {
+    await fetch(`${AVATAR_URL}/v1/avatar/voice`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({user_id: user, voice: currentVoice})
+    });
+    const btn = document.getElementById('saveVoiceBtn');
+    btn.textContent = 'Saved ✓';
+    btn.style.borderColor = '#c6f135';
+    btn.style.color = '#c6f135';
+    setTimeout(() => {
+      btn.textContent = 'Save Voice';
+      btn.style.borderColor = '#333';
+      btn.style.color = '#555';
+    }, 2000);
+  } catch(e) { showErr('Save failed'); }
+});
+
+document.getElementById('testVoiceBtn').addEventListener('click', async () => {
+  if (!user || !currentVoice) return;
+  const speed = parseFloat(document.getElementById('speedRange').value);
+  const testText = "Hello, this is a test of the voice synthesis system.";
+  try {
+    await fetch('/v1/voice/speak', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({text: testText, user: user, voice: currentVoice, speed: speed})
+    });
+  } catch(e) { showErr('Test failed'); }
+});
+
+// Modified sendJarvis to include voice and speed
+const originalSendJarvis = sendJarvis;
+sendJarvis = async function(txt) {
+  if(!user){showErr('Select a user first');return}
+  setLoad(true);
+  try{
+    const d=await(await fetch('/v1/voice/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({intent:txt,user,complexity:2})})).json();
+    if(d.detail==='Authorization required --- pass Bearer token'){
+      authedUsers.delete(user);showErr('Session expired — please re-authenticate');setLoad(false);return;
+    }
+    const resp=d.response||d.text||d.answer||JSON.stringify(d);
+    const tgt=d.routing?.target||d.target||'unknown';
+    const reason=d.routing?.reason||d.reason||'';
+    const lat=d.latency_ms?d.latency_ms+'ms':'';
+    const local=['llama','qwen','local','ollama'].some(k=>tgt.toLowerCase().includes(k));
+    showResp(resp,tgt,reason,lat,local);
+    addHist(txt,resp,tgt,local);
+    lastText=resp;
+    // Auto-speak with selected voice and speed
+    const speed = parseFloat(document.getElementById('speedRange').value);
+    const voice = currentVoice || null;
+    await fetch('/v1/voice/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:resp,user,voice,speed})});
+    document.getElementById('txtIn').value='';
+  }catch(e){showErr('Error: '+e.message)}
+  finally{setLoad(false)}
+};
+
+// Avatar animation
+const avatarCanvas = document.getElementById('avatarCanvas');
+const avatarCtx = avatarCanvas.getContext('2d');
+let isSpeaking = false;
+let mouthOpen = 0;
+let blinkState = 1;
+let blinkTimer = 0;
+let animT = 0;
+
+function drawAvatar() {
+  const accent = '#c6f135';
+  const skin = '#1a2a1a';
+  avatarCtx.clearRect(0, 0, 120, 120);
+  const cx = 60, cy = 60, r = 50;
+  
+  // Head
+  const grad = avatarCtx.createRadialGradient(cx-15, cy-15, 5, cx, cy, r);
+  grad.addColorStop(0, skin);
+  grad.addColorStop(1, '#070f07');
+  avatarCtx.beginPath();
+  avatarCtx.arc(cx, cy, r, 0, Math.PI*2);
+  avatarCtx.fillStyle = grad;
+  avatarCtx.fill();
+  avatarCtx.strokeStyle = isSpeaking ? accent : '#1e2e1e';
+  avatarCtx.lineWidth = 1.5;
+  avatarCtx.stroke();
+  
+  // Eyes - tech HUD style
+  const eyeY = cy - 10;
+  [-15, 15].forEach(dx => {
+    const ex = cx + dx;
+    avatarCtx.beginPath();
+    avatarCtx.arc(ex, eyeY, 7, 0, Math.PI*2);
+    avatarCtx.strokeStyle = accent;
+    avatarCtx.lineWidth = 1;
+    avatarCtx.stroke();
+    const eg = avatarCtx.createRadialGradient(ex, eyeY, 0, ex, eyeY, 6);
+    eg.addColorStop(0, accent + 'cc');
+    eg.addColorStop(0.4, accent + '44');
+    eg.addColorStop(1, 'transparent');
+    avatarCtx.beginPath();
+    avatarCtx.arc(ex, eyeY, 6 * blinkState, 0, Math.PI*2);
+    avatarCtx.fillStyle = eg;
+    avatarCtx.fill();
+    avatarCtx.beginPath();
+    avatarCtx.arc(ex, eyeY, 2 * blinkState, 0, Math.PI*2);
+    avatarCtx.fillStyle = '#000';
+    avatarCtx.fill();
+  });
+  
+  // Mouth - speaker grille
+  const mouthY = cy + 15;
+  const mw = 20;
+  const mo = mouthOpen;
+  avatarCtx.beginPath();
+  avatarCtx.roundRect(cx - mw, mouthY - 2 - mo*5, mw*2, 4 + mo*10, 2);
+  avatarCtx.fillStyle = '#040804';
+  avatarCtx.fill();
+  avatarCtx.strokeStyle = accent;
+  avatarCtx.lineWidth = 1;
+  avatarCtx.stroke();
+  if (mo > 0.05) {
+    for (let i = 0; i < 3; i++) {
+      const lx = cx - mw + 5 + i * 13;
+      const ly1 = mouthY - mo*3;
+      const ly2 = mouthY + mo*3;
+      avatarCtx.beginPath();
+      avatarCtx.moveTo(lx, ly1);
+      avatarCtx.lineTo(lx, ly2);
+      avatarCtx.strokeStyle = accent + 'aa';
+      avatarCtx.lineWidth = 0.5;
+      avatarCtx.stroke();
+    }
+  }
+}
+
+function animateAvatar() {
+  animT += 0.05;
+  blinkTimer += 1;
+  if (blinkTimer > 90 + Math.random()*60) {
+    blinkTimer = 0;
+    blinkState = 0;
+    setTimeout(() => { blinkState = 1; }, 60);
+  }
+  if (isSpeaking) {
+    mouthOpen = Math.abs(Math.sin(animT * 3.5)) * 0.75 + Math.random() * 0.12;
+  } else {
+    mouthOpen = Math.max(0, mouthOpen - 0.08);
+  }
+  drawAvatar();
+  requestAnimationFrame(animateAvatar);
+}
+animateAvatar();
+
+// Hook into speaking state via audio monitoring
+setInterval(() => {
+  const audioElements = document.querySelectorAll('audio');
+  let anyPlaying = false;
+  audioElements.forEach(a => {
+    if (!a.paused && !a.ended) anyPlaying = true;
+  });
+  if (anyPlaying && !isSpeaking) {
+    isSpeaking = true;
+    document.getElementById('avatarStatus').textContent = 'SPEAKING';
+    document.getElementById('avatarStatus').style.color = '#c6f135';
+    avatarCanvas.style.filter = 'drop-shadow(0 0 8px #c6f135)';
+  } else if (!anyPlaying && isSpeaking) {
+    isSpeaking = false;
+    document.getElementById('avatarStatus').textContent = 'IDLE';
+    document.getElementById('avatarStatus').style.color = '#555';
+    avatarCanvas.style.filter = 'none';
+  }
+}, 100);
+
+// Avatar animationcheckStatus();setInterval(checkStatus,30000);
 updateUserUI();
+loadVoices();
 </script>
 
 <!-- ── APPROVAL NOTIFICATION OVERLAY ─────────────────────────────────────── -->
