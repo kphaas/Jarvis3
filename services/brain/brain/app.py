@@ -831,15 +831,21 @@ async def ask(req: AskRequest, authorization: str = Header(default=None)):
     elif target == "scrape":
         scrape_target = find_scrape_target(req.intent)
         if scrape_target:
-            token = _get_gateway_token_from_keychain()
             try:
-                async with httpx.AsyncClient(timeout=15) as client:
-                    r = await client.post(
-                        f"{GATEWAY_BASE}/fetch",
-                        json={"url": scrape_target["url"]},
-                        headers={"X-Jarvis-Token": token}
-                    )
-                scraped = r.json().get("text_excerpt", "")
+                if scrape_target.get("direct"):
+                    async with httpx.AsyncClient(timeout=15) as client:
+                        r = await client.get(scrape_target["url"])
+                    import json as _json
+                    scraped = _json.dumps(r.json(), indent=2)
+                else:
+                    token = _get_gateway_token_from_keychain()
+                    async with httpx.AsyncClient(timeout=15) as client:
+                        r = await client.post(
+                            f"{GATEWAY_BASE}/fetch",
+                            json={"url": scrape_target["url"]},
+                            headers={"X-Jarvis-Token": token}
+                        )
+                    scraped = r.json().get("text_excerpt", "")
                 prompt  = f"{scrape_target['prompt']}\n\n{scraped[:3000]}"
                 async with httpx.AsyncClient() as client:
                     r = await client.post(

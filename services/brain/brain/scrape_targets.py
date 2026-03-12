@@ -2,7 +2,8 @@ SCRAPE_TARGETS = {
     "weather": {
         "url": "https://api.open-meteo.com/v1/forecast?latitude=33.749&longitude=-84.388&current_weather=true&hourly=temperature_2m,precipitation_probability,weathercode&forecast_days=1&temperature_unit=fahrenheit&windspeed_unit=mph",
         "keywords": ["weather", "temperature", "rain", "sunny", "cold", "hot", "humid", "outside"],
-        "prompt": "Summarize this weather data for Atlanta in 2 friendly sentences. Convert celsius to fahrenheit if needed:"
+        "prompt": "Summarize this weather data for Atlanta in 2 friendly sentences. Convert celsius to fahrenheit if needed:",
+        "direct": True
     },
     "weather_full": {
         "url": "https://api.open-meteo.com/v1/forecast?latitude=33.749&longitude=-84.388&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&forecast_days=7&temperature_unit=fahrenheit&windspeed_unit=mph",
