@@ -97,7 +97,8 @@ def list_pending():
             expires = r["expires_at"]
             if expires.tzinfo is None:
                 expires = expires.replace(tzinfo=timezone.utc)
-            d["hours_pending"] = round((now - r["created_at"].replace(tzinfo=timezone.utc)).total_seconds() / 3600, 1)
+            created = r["created_at"] if r["created_at"].tzinfo else r["created_at"].replace(tzinfo=timezone.utc)
+            d["hours_pending"] = round((now - created).total_seconds() / 3600, 1)
             d["hours_remaining"] = round((expires - now).total_seconds() / 3600, 1)
             result.append(d)
         return {"pending": result, "count": len(result)}

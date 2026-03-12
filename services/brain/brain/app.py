@@ -1229,6 +1229,8 @@ from brain.morning_briefing import router as briefing_router
 from brain.overnight import router as overnight_router
 from brain.overnight_context import router as overnight_context_router
 app.include_router(briefing_router)
+app.include_router(overnight_router)
+app.include_router(overnight_context_router)
 
 from brain.unraid_health import router as unraid_router
 app.include_router(unraid_router)

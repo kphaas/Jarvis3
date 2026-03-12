@@ -297,5 +297,76 @@ function setLoad(on){
 checkStatus();setInterval(checkStatus,30000);
 updateUserUI();
 </script>
+
+<!-- ── APPROVAL NOTIFICATION OVERLAY ─────────────────────────────────────── -->
+<div id="approval-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:999;display:none;align-items:center;justify-content:center;">
+  <div style="background:#111;border:1px solid #C6F135;border-radius:16px;padding:32px;max-width:480px;width:90%;font-family:'DM Mono',monospace;">
+    <div style="font-size:.65rem;letter-spacing:3px;color:#555;margin-bottom:8px">JARVIS APPROVAL REQUIRED</div>
+    <div id="apv-action" style="font-size:1rem;font-weight:600;color:#C6F135;margin-bottom:12px"></div>
+    <div id="apv-summary" style="font-size:.8rem;color:#e8e8e8;margin-bottom:8px;line-height:1.5"></div>
+    <div id="apv-meta" style="font-size:.7rem;color:#555;margin-bottom:24px"></div>
+    <div style="display:flex;gap:10px">
+      <button id="apv-approve" style="flex:1;padding:12px;background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid #22c55e;border-radius:8px;font-family:'DM Mono',monospace;font-size:.8rem;font-weight:600;letter-spacing:1px;cursor:pointer">APPROVE</button>
+      <button id="apv-reject" style="flex:1;padding:12px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid #ef4444;border-radius:8px;font-family:'DM Mono',monospace;font-size:.8rem;font-weight:600;letter-spacing:1px;cursor:pointer">REJECT</button>
+      <button id="apv-dismiss" style="padding:12px 16px;background:transparent;color:#555;border:1px solid #1e1e1e;border-radius:8px;font-family:'DM Mono',monospace;font-size:.8rem;cursor:pointer">LATER</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const BRAIN_URL = 'http://100.64.166.22:8182';
+let currentApprovalId = null;
+let lastSeenApprovalId = null;
+
+async function checkApprovals() {
+  try {
+    const res = await fetch(`${BRAIN_URL}/v1/approvals/pending`);
+    const data = await res.json();
+    const pending = data.pending || [];
+    if (pending.length === 0) { hideApproval(); return; }
+    const first = pending[0];
+    if (first.id === lastSeenApprovalId) return;
+    const hoursOld = first.hours_pending || 0;
+    if (hoursOld < 0.1 || (hoursOld >= 23.5 && hoursOld <= 24.5)) {
+      showApproval(first);
+    }
+  } catch(e) {}
+}
+
+function showApproval(req) {
+  currentApprovalId = req.id;
+  document.getElementById('apv-action').textContent = req.action_type;
+  document.getElementById('apv-summary').textContent = req.payload_summary;
+  document.getElementById('apv-meta').textContent = `Agent: ${req.agent_id || '—'} · Pending: ${req.hours_pending}h · Expires in ${req.hours_remaining}h · Timeout: ${req.timeout_behavior}`;
+  const overlay = document.getElementById('approval-overlay');
+  overlay.style.display = 'flex';
+}
+
+function hideApproval() {
+  document.getElementById('approval-overlay').style.display = 'none';
+  currentApprovalId = null;
+}
+
+async function decideApproval(decision) {
+  if (!currentApprovalId) return;
+  try {
+    await fetch(`${BRAIN_URL}/v1/approvals/${currentApprovalId}/decide`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision, decided_by: 'ken' })
+    });
+    lastSeenApprovalId = currentApprovalId;
+    hideApproval();
+  } catch(e) {}
+}
+
+document.getElementById('apv-approve').onclick  = () => decideApproval('approved');
+document.getElementById('apv-reject').onclick   = () => decideApproval('rejected');
+document.getElementById('apv-dismiss').onclick  = () => { lastSeenApprovalId = currentApprovalId; hideApproval(); };
+
+checkApprovals();
+setInterval(checkApprovals, 60000);
+</script>
+
 </body>
 </html>
