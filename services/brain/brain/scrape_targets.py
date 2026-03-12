@@ -8,6 +8,7 @@ SCRAPE_TARGETS = {
     "weather_full": {
         "url": "https://api.open-meteo.com/v1/forecast?latitude=33.749&longitude=-84.388&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&forecast_days=7&temperature_unit=fahrenheit&windspeed_unit=mph",
         "keywords": ["5 day forecast", "week forecast", "weather this week", "weather forecast"],
+        "direct": True,
         "prompt": "Summarize this 7-day Atlanta weather forecast in 3 friendly sentences:"
     },
     "uga_football": {
