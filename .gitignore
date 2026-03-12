@@ -73,3 +73,5 @@ services/avatar/avatar_ui.html
 services/avatar/kokoro-v1.0.onnx
 services/avatar/voices-v1.0.bin
 dashboard/src/App.js.bak
+overnight/results/
+overnight/workspace/
