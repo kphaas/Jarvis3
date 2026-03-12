@@ -68,6 +68,14 @@ async def get_costs():
     credit_balance = limits_map.get("credit_balance", 0.0)
     credit_remaining = round(max(0, credit_balance - all_time_spent), 4)
     credit_pct_used = round(all_time_spent / credit_balance * 100, 1) if credit_balance > 0 else 0
+    daily_spent    = float(today["spent"])
+    weekly_spent   = float(this_week["spent"])
+    monthly_spent  = float(this_month["spent"])
+    all_time_spent = float(total["total"])
+
+    credit_balance   = limits_map.get("credit_balance", 0.0)
+    credit_remaining = round(max(0, credit_balance - all_time_spent), 4)
+    credit_pct_used  = round(all_time_spent / credit_balance * 100, 1) if credit_balance > 0 else 0
 
     budget = {
         "daily": {
