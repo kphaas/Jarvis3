@@ -193,6 +193,6 @@ def local_health():
         import httpx
         r = httpx.get("http://127.0.0.1:11434/api/tags", timeout=3)
         models = [m["name"] for m in r.json().get("models", [])]
-        return {"ollama": "ok", "models": models}
+        return {"ollama": "ok", "ollama_running": True, "models": models, "model_count": len(models)}
     except Exception:
-        return {"ollama": "unreachable", "models": []}
+        return {"ollama": "unreachable", "ollama_running": False, "models": [], "model_count": 0}
