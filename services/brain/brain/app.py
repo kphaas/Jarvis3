@@ -1319,3 +1319,7 @@ async def review_proposal(proposal_id: int, status: str, reviewed_by: str = "hum
         return {"id": proposal_id, "status": status}
     finally:
         conn.close()
+
+
+from brain.morning_briefing import router as briefing_router
+app.include_router(briefing_router)
