@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from brain.planner import propose_plan, enforce_policy
 from brain.context_injector import get_news_context
 from brain.child_policy import get_user_profile, is_child_role, check_content_safe, build_child_prompt, enforce_complexity, BLOCKED_RESPONSE
+from brain.memory_service import build_memory_prefix
 
 def _get_pg_password() -> str:
     secrets_path = os.path.expanduser("~/jarvis/.secrets")
@@ -734,6 +735,26 @@ setInterval(()=>{sec--;document.getElementById("countdown-text").textContent=sec
 
 
 from brain.router import route
+
+async def _policy_scan(intent: str, role: str) -> dict:
+    """Passthrough policy scan — calls policy service or returns safe if unavailable."""
+    try:
+        async with __import__("httpx").AsyncClient(timeout=5) as client:
+            resp = await client.post("http://127.0.0.1:8184/v1/policy/check",
+                json={"intent": intent, "role": role})
+            if resp.status_code == 200:
+                return resp.json()
+    except Exception:
+        pass
+    return {"safe": True, "reason": None}
+
+
+async def _resolve_user(user_id: str, authorization: str = None):
+    """Passthrough auth — Phase 8 will replace with JWT verification."""
+    profile = get_user_profile(user_id) or {}
+    role = profile.get("role", "user")
+    return user_id or "ken", role
+
 
 class AskRequest(BaseModel):
     intent: str
