@@ -1232,6 +1232,7 @@ app.include_router(briefing_router)
 
 from brain.unraid_health import router as unraid_router
 app.include_router(unraid_router)
+
 app.include_router(overnight_router)
 app.include_router(overnight_context_router)
 
@@ -1329,3 +1330,5 @@ app.include_router(briefing_router)
 
 from brain.unraid_health import router as unraid_router
 app.include_router(unraid_router)
+from brain.approval_gateway import router as approval_router
+app.include_router(approval_router)

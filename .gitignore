@@ -62,3 +62,14 @@ logs/
 *.bak
 *.bak2
 services/xtts/voice_samples/
+backups/
+*.bak
+*.bak_*
+*.backup.*
+overnight/results/
+services/agent_monitor.html
+services/avatar/agent_monitor.html
+services/avatar/avatar_ui.html
+services/avatar/kokoro-v1.0.onnx
+services/avatar/voices-v1.0.bin
+dashboard/src/App.js.bak

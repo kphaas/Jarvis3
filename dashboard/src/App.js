@@ -316,6 +316,9 @@ function useJarvisData() {
       [`${BRAIN}/v1/overnight/instructions`,   "overnightInstructions"],
       [`${BRAIN}/v1/overnight/docs`,           "overnightDocs"],
       [`${BRAIN}/v1/unraid/health`,            "unraidHealth"],
+      [`${BRAIN}/v1/approvals/pending`,        "approvals"],
+      [`${BRAIN}/v1/approvals/trust`,           "trustRegistry"],
+      [`${BRAIN}/v1/approvals/history`,         "approvalHistory"],
     ];
 
     await Promise.all(fetches.map(async ([url, key]) => {
@@ -1217,6 +1220,138 @@ function CodeReviewTab({ data }) {
   );
 }
 
+
+// ── APPROVALS TAB ──────────────────────────────────────────────────────────────
+function ApprovalsTab({ data }) {
+  const [activeSection, setActiveSection] = useState("pending");
+  const pending  = data?.approvals?.pending || [];
+  const trust    = data?.trustRegistry?.trust_registry || [];
+  const history  = data?.approvalHistory?.history || [];
+
+  const TIER_COLORS = { 0: C.muted, 1: C.amber, 2: C.blue, 3: C.green, 4: C.accent };
+  const TIER_NAMES  = { 0: "Unverified", 1: "Provisional", 2: "Trusted", 3: "Established", 4: "Permanent" };
+
+  const decide = async (id, decision) => {
+    await fetch(`${BRAIN}/v1/approvals/${id}/decide`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision, decided_by: "ken" })
+    });
+    window.location.reload();
+  };
+
+  return (
+    <div className="fade-up" style={{ display: "grid", gap: 16 }}>
+      {/* Section toggle */}
+      <div style={{ display: "flex", gap: 8 }}>
+        {["pending", "trust", "history"].map(s => (
+          <button key={s} onClick={() => setActiveSection(s)} style={{
+            padding: "6px 16px", borderRadius: 8, cursor: "pointer", fontSize: 11,
+            fontFamily: "'DM Mono', monospace", letterSpacing: 1,
+            background: activeSection === s ? C.accentDim : "transparent",
+            color: activeSection === s ? C.accent : C.muted,
+            border: `1px solid ${activeSection === s ? C.accent : C.border}`,
+            transition: "all 0.15s",
+          }}>{s.toUpperCase()}{s === "pending" && pending.length > 0 ? ` (${pending.length})` : ""}</button>
+        ))}
+      </div>
+
+      {/* Pending Queue */}
+      {activeSection === "pending" && (
+        <Card>
+          <SectionLabel>Pending Approvals</SectionLabel>
+          {pending.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40, color: C.green, fontFamily: "'DM Mono', monospace", fontSize: 12 }}>✓ NO PENDING APPROVALS</div>
+          ) : pending.map((r, i) => (
+            <div key={i} style={{ display: "grid", gap: 10, padding: "14px", background: C.surface, borderRadius: 10, border: `1px solid ${C.amber}44`, marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: C.amber, fontWeight: 600 }}>{r.action_type}</span>
+                <StatusBadge status="PENDING" />
+              </div>
+              <div style={{ fontSize: 12, color: C.text }}>{r.payload_summary}</div>
+              <div style={{ display: "flex", gap: 16, fontSize: 11, fontFamily: "'DM Mono', monospace", color: C.muted }}>
+                <span>Agent: {r.agent_id || "—"}</span>
+                <span>Pending: {r.hours_pending}h</span>
+                <span>Expires: {r.hours_remaining}h remaining</span>
+                <span>On timeout: {r.timeout_behavior}</span>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                <button onClick={() => decide(r.id, "approved")} style={{
+                  padding: "8px 20px", borderRadius: 8, cursor: "pointer", fontSize: 11,
+                  fontFamily: "'DM Mono', monospace", fontWeight: 600, letterSpacing: 1,
+                  background: C.greenDim, color: C.green, border: `1px solid ${C.green}`,
+                }}>APPROVE</button>
+                <button onClick={() => decide(r.id, "rejected")} style={{
+                  padding: "8px 20px", borderRadius: 8, cursor: "pointer", fontSize: 11,
+                  fontFamily: "'DM Mono', monospace", fontWeight: 600, letterSpacing: 1,
+                  background: C.redDim, color: C.red, border: `1px solid ${C.red}`,
+                }}>REJECT</button>
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
+
+      {/* Trust Registry */}
+      {activeSection === "trust" && (
+        <Card>
+          <SectionLabel>Trust Registry</SectionLabel>
+          <div style={{ display: "grid", gap: 8 }}>
+            {trust.map((t, i) => (
+              <div key={i} style={{
+                display: "grid", gridTemplateColumns: "1fr 120px 100px 120px",
+                gap: 12, alignItems: "center", padding: "12px 14px",
+                background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8,
+              }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: C.text, fontFamily: "'DM Mono', monospace" }}>{t.action_type}</div>
+                  <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>{t.notes}</div>
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 11, color: TIER_COLORS[t.current_tier], fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{TIER_NAMES[t.current_tier]}</div>
+                  <div style={{ fontSize: 10, color: C.muted }}>Tier {t.current_tier} / {t.max_tier}</div>
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <StatusBadge status={t.always_approve ? "WARN" : "PASS"} />
+                  <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>{t.always_approve ? "always renew" : "escalates"}</div>
+                </div>
+                <div style={{ fontSize: 10, color: C.muted, fontFamily: "'DM Mono', monospace" }}>
+                  {t.next_review_at ? `Review: ${t.next_review_at.slice(0,10)}` : "No review scheduled"}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* History */}
+      {activeSection === "history" && (
+        <Card>
+          <SectionLabel>Decision History</SectionLabel>
+          {history.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40, color: C.muted, fontFamily: "'DM Mono', monospace", fontSize: 12 }}>NO HISTORY YET</div>
+          ) : history.map((r, i) => (
+            <div key={i} style={{
+              display: "grid", gridTemplateColumns: "140px 1fr 100px 100px",
+              gap: 12, alignItems: "center", padding: "11px 14px",
+              background: i % 2 === 0 ? C.surface : "transparent",
+              borderBottom: i < history.length - 1 ? `1px solid ${C.border}` : "none",
+            }}>
+              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: C.muted }}>{r.created_at?.slice(0,16)}</span>
+              <div>
+                <div style={{ fontSize: 12, color: C.text, fontFamily: "'DM Mono', monospace" }}>{r.action_type}</div>
+                <div style={{ fontSize: 11, color: C.muted }}>{r.payload_summary}</div>
+              </div>
+              <StatusBadge status={r.status === "approved" ? "PASS" : r.status === "rejected" ? "FAIL" : "WARN"} />
+              <span style={{ fontSize: 11, color: C.muted, fontFamily: "'DM Mono', monospace" }}>{r.decided_by || "—"}</span>
+            </div>
+          ))}
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ── ERRORS TAB ─────────────────────────────────────────────────────────────────
 function ErrorsTab({ data, errors }) {
   const allErrors = data?.errors || [];
@@ -1882,6 +2017,7 @@ export default function App() {
     { id: "routing",  label: "Routing",   icon: "🔀" },
     { id: "user",     label: "User",      icon: "👤" },
     { id: "overnight", label: "Overnight", icon: "🌙" },
+    { id: "approvals", label: "Approvals", icon: "✅" },
   ];
 
   const nodes = [
@@ -1898,6 +2034,7 @@ export default function App() {
 
   const tabBadge = id => {
     if (id === "errors"  && errorCount > 0) return errorCount;
+    if (id === "approvals" && (data?.approvals?.count || 0) > 0) return data.approvals.count;
     return null;
   };
 
@@ -2008,6 +2145,7 @@ export default function App() {
           {tab === "routing"  && <RoutingTab    data={data} errors={errors} />}
           {tab === "user"     && <UserTab />}
           {tab === "overnight" && <OvernightTab data={data} errors={errors} />}
+          {tab === "approvals" && <ApprovalsTab data={data} errors={errors} />}
         </main>
 
         {/* Footer */}
