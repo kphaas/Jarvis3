@@ -315,6 +315,7 @@ function useJarvisData() {
       [`${BRAIN}/v1/overnight/runs`,           "overnightRuns"],
       [`${BRAIN}/v1/overnight/instructions`,   "overnightInstructions"],
       [`${BRAIN}/v1/overnight/docs`,           "overnightDocs"],
+      [`${BRAIN}/v1/unraid/health`,            "unraidHealth"],
     ];
 
     await Promise.all(fetches.map(async ([url, key]) => {
@@ -724,6 +725,39 @@ function SummaryTab({ data, errors }) {
           </div>
         </Card>
       </div>
+
+      {/* Unraid Storage */}
+      <Card>
+        <SectionLabel>Unraid Storage</SectionLabel>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ padding: "14px", background: C.surface, borderRadius: 10, border: `1px solid ${(data?.unraidHealth?.status === "HEALTHY" ? C.green : data?.unraidHealth?.status === "WARNING" ? C.amber : C.red) + "33"}` }}>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: C.muted, marginBottom: 6 }}>ARRAY STATUS</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 22, color: data?.unraidHealth?.status === "HEALTHY" ? C.green : data?.unraidHealth?.status === "WARNING" ? C.amber : C.red }}>
+                {data?.unraidHealth?.array_state || "—"}
+              </span>
+              <StatusBadge status={data?.unraidHealth?.status || "UNKNOWN"} />
+            </div>
+            <div style={{ fontSize: 11, color: C.muted, fontFamily: "'DM Mono', monospace", marginTop: 6 }}>
+              {data?.unraidHealth?.capacity ? `${data.unraidHealth.capacity.used_tb}TB / ${data.unraidHealth.capacity.total_tb}TB (${data.unraidHealth.capacity.used_pct}%)` : "—"}
+            </div>
+          </div>
+          <div style={{ padding: "14px", background: C.surface, borderRadius: 10, border: `1px solid ${C.border}` }}>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: C.muted, marginBottom: 6 }}>DISK HEALTH</div>
+            <div style={{ display: "grid", gap: 4, maxHeight: 120, overflowY: "auto" }}>
+              {(data?.unraidHealth?.disks || []).filter(d => d.size_gb > 100).map((d, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, fontFamily: "'DM Mono', monospace", color: C.textDim }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>{d.name}</span>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    {d.temp_c && <span style={{ color: d.temp_c > 45 ? C.red : d.temp_c > 38 ? C.amber : C.green }}>{d.temp_c}°C</span>}
+                    <StatusBadge status={d.smart === "OK" ? "PASS" : d.smart === "UNKNOWN" ? "WARN" : "FAIL"} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </Card>
 
       {/* Recent code writes */}
       <Card>
