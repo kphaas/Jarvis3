@@ -1252,20 +1252,6 @@ async def circuit_thresholds(req: CircuitThresholds):
 
 from brain.costs import router as costs_router
 app.include_router(costs_router)
-<<<<<<< Updated upstream
-from brain.morning_briefing import router as briefing_router
-from brain.overnight import router as overnight_router
-from brain.overnight_context import router as overnight_context_router
-app.include_router(briefing_router)
-app.include_router(overnight_router)
-app.include_router(overnight_context_router)
-
-from brain.unraid_health import router as unraid_router
-app.include_router(unraid_router)
-
-app.include_router(overnight_router)
-app.include_router(overnight_context_router)
-
 =======
 >>>>>>> Stashed changes
 
@@ -1288,81 +1274,5 @@ async def queue_agent_task(body: dict):
     conn.commit()
     conn.close()
     return {"id": row[0], "status": "queued"}
-<<<<<<< Updated upstream
-
-
-# ---------------------------------------------------------------------------
-# GAP 10 — Agent proposals quarantine table
-# ---------------------------------------------------------------------------
-
-class ProposalRequest(BaseModel):
-    proposed_by: str
-    proposal_type: str
-    title: str
-    description: Optional[str] = None
-    payload: Optional[dict] = None
-
-@app.get("/v1/agents/proposals")
-async def list_proposals(status: Optional[str] = None):
-    import psycopg2; conn = psycopg2.connect(f"postgresql://jarvis:{_get_pg_password()}@localhost:5432/jarvis")
-    try:
-        cur = conn.cursor()
-        if status:
-            cur.execute(
-                "SELECT * FROM agents_proposals WHERE status=%s ORDER BY created_at DESC",
-                (status,)
-            )
-        else:
-            cur.execute("SELECT * FROM agents_proposals ORDER BY created_at DESC")
-        rows = cur.fetchall()
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, r)) for r in rows]
-    finally:
-        conn.close()
-
-@app.post("/v1/agents/proposals")
-async def create_proposal(req: ProposalRequest):
-    import json as _json
-    import psycopg2; conn = psycopg2.connect(f"postgresql://jarvis:{_get_pg_password()}@localhost:5432/jarvis")
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            """INSERT INTO agents_proposals
-               (proposed_by, proposal_type, title, description, payload)
-               VALUES (%s,%s,%s,%s,%s) RETURNING id""",
-            (req.proposed_by, req.proposal_type, req.title,
-             req.description, _json.dumps(req.payload) if req.payload else None)
-        )
-        new_id = cur.fetchone()[0]
-        conn.commit()
-        return {"id": new_id, "status": "pending"}
-    finally:
-        conn.close()
-
-@app.patch("/v1/agents/proposals/{proposal_id}")
-async def review_proposal(proposal_id: int, status: str, reviewed_by: str = "human"):
-    if status not in ("approved", "rejected"):
-        raise HTTPException(status_code=400, detail="status must be approved or rejected")
-    import psycopg2; conn = psycopg2.connect(f"postgresql://jarvis:{_get_pg_password()}@localhost:5432/jarvis")
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            """UPDATE agents_proposals
-               SET status=%s, reviewed_by=%s, reviewed_at=NOW(), updated_at=NOW()
-               WHERE id=%s""",
-            (status, reviewed_by, proposal_id)
-        )
-        conn.commit()
-        return {"id": proposal_id, "status": status}
-    finally:
-        conn.close()
-
-
-app.include_router(briefing_router)
-
-from brain.unraid_health import router as unraid_router
-app.include_router(unraid_router)
-from brain.approval_gateway import router as approval_router
-app.include_router(approval_router)
 =======
 >>>>>>> Stashed changes
