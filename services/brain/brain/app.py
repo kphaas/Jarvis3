@@ -1354,7 +1354,6 @@ async def review_proposal(proposal_id: int, status: str, reviewed_by: str = "hum
         conn.close()
 
 
-from brain.morning_briefing import router as briefing_router
 app.include_router(briefing_router)
 
 from brain.unraid_health import router as unraid_router
