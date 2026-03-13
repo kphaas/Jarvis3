@@ -3,6 +3,9 @@ set -euo pipefail
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
+echo "Waiting for Postgres..."
+~/jarvis/scripts/wait_for_service.sh postgres || exit 1
+
 echo "Waiting for Tailscale..."
 for i in {1..60}; do
   TS_IP=$(tailscale ip -4 2>/dev/null || true)
@@ -20,14 +23,8 @@ if [[ "$TS_IP" != "100.64.166.22" ]]; then
 fi
 
 echo "Waiting for Ollama..."
-for i in {1..30}; do
-  if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
-    echo "Ollama ready"
-    break
-  fi
-  echo "Attempt $i: Ollama not ready yet, waiting 2s..."
-  sleep 2
-done
+~/jarvis/scripts/wait_for_service.sh process com.jarvis.ollama 30 || exit 1
+curl -s http://localhost:11434/api/tags > /dev/null 2>&1 || sleep 5
 
 "$HOME/jarvis/bin/mount_docs.sh" 2>/dev/null || true
 
