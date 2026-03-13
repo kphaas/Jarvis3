@@ -129,9 +129,7 @@ def docs_status():
         "docs_allow": sorted(DOCS_ALLOW),
     }
 
-# ============================================================
 # DOCUMENTS SECURITY SUBSYSTEM
-# ============================================================
 
 DOCS_ROOT = Path(
     os.environ.get("JARVIS_DOCS_ROOT", "/Volumes/Documents")
@@ -1252,8 +1250,6 @@ async def circuit_thresholds(req: CircuitThresholds):
 
 from brain.costs import router as costs_router
 app.include_router(costs_router)
-=======
->>>>>>> Stashed changes
 
 @app.post("/v1/agent/queue")
 async def queue_agent_task(body: dict):
@@ -1274,5 +1270,92 @@ async def queue_agent_task(body: dict):
     conn.commit()
     conn.close()
     return {"id": row[0], "status": "queued"}
-=======
->>>>>>> Stashed changes
+
+
+# ===== MCP Security Endpoints =====
+from brain.mcp_scanner import scan_mcp_server
+import subprocess
+import json as json_lib
+
+@app.post("/v1/mcp/scan")
+async def mcp_scan_endpoint(github_url: str):
+    """Scan a GitHub MCP server repository for security risks"""
+    try:
+        staging_dir = Path("/tmp/mcp_staging")
+        staging_dir.mkdir(exist_ok=True)
+
+        repo_name = github_url.rstrip('/').split('/')[-1]
+        repo_path = staging_dir / repo_name
+
+        if repo_path.exists():
+            subprocess.run(['rm', '-rf', str(repo_path)], check=True)
+
+        result = subprocess.run(
+            ['git', 'clone', '--depth', '1', github_url, str(repo_path)],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+
+        if result.returncode != 0:
+            return {"error": f"Failed to clone repo: {result.stderr}"}
+
+        scan_result = scan_mcp_server(str(repo_path))
+        scan_result['github_url'] = github_url
+        scan_result['server_name'] = repo_name
+
+        return scan_result
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/v1/mcp/install")
+async def mcp_install_endpoint(body: dict):
+    """Install a vetted MCP server"""
+    server_name = body['server_name']
+    github_url = body['github_url']
+    trust_level = body['trust_level']
+    approved_by = body['approved_by']
+
+    conn = await asyncpg.connect(f"postgresql://jarvis:{_get_pg_password()}@localhost:5432/jarvis")
+    try:
+        scan_result = await mcp_scan_endpoint(github_url)
+
+        if 'error' in scan_result:
+            return scan_result
+
+        await conn.execute(
+            """
+            INSERT INTO mcp_registry (server_name, github_url, trust_level, risk_score, approved_by, status)
+            VALUES ($1, $2, $3, $4, $5, 'installed')
+            """,
+            server_name, github_url, trust_level, scan_result['risk_score'], approved_by
+        )
+
+        return {
+            "status": "installed",
+            "server_name": server_name,
+            "risk_score": scan_result['risk_score']
+        }
+    finally:
+        await conn.close()
+
+
+@app.get("/v1/mcp/list")
+async def mcp_list_endpoint():
+    """List all installed MCP servers"""
+    conn = await asyncpg.connect(f"postgresql://jarvis:{_get_pg_password()}@localhost:5432/jarvis")
+    try:
+        rows = await conn.fetch("SELECT * FROM mcp_registry ORDER BY installed_at DESC")
+        return [{
+            'id': r['id'],
+            'server_name': r['server_name'],
+            'github_url': r['github_url'],
+            'trust_level': r['trust_level'],
+            'risk_score': r['risk_score'],
+            'status': r['status'],
+            'installed_at': r['installed_at'].isoformat()
+        } for r in rows]
+    finally:
+        await conn.close()

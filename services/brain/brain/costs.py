@@ -69,8 +69,6 @@ async def get_costs():
     credit_balance = limits_map.get("credit_balance", 0.0)
     credit_remaining = round(max(0, credit_balance - all_time_spent), 4)
     credit_pct_used = round(all_time_spent / credit_balance * 100, 1) if credit_balance > 0 else 0
-=======
->>>>>>> Stashed changes
 
     budget = {
         "daily": {
