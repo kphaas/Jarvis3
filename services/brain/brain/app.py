@@ -1252,6 +1252,7 @@ async def circuit_thresholds(req: CircuitThresholds):
 
 from brain.costs import router as costs_router
 app.include_router(costs_router)
+<<<<<<< Updated upstream
 from brain.morning_briefing import router as briefing_router
 from brain.overnight import router as overnight_router
 from brain.overnight_context import router as overnight_context_router
@@ -1265,6 +1266,8 @@ app.include_router(unraid_router)
 app.include_router(overnight_router)
 app.include_router(overnight_context_router)
 
+=======
+>>>>>>> Stashed changes
 
 @app.post("/v1/agent/queue")
 async def queue_agent_task(body: dict):
@@ -1285,6 +1288,7 @@ async def queue_agent_task(body: dict):
     conn.commit()
     conn.close()
     return {"id": row[0], "status": "queued"}
+<<<<<<< Updated upstream
 
 
 # ---------------------------------------------------------------------------
@@ -1360,3 +1364,5 @@ from brain.unraid_health import router as unraid_router
 app.include_router(unraid_router)
 from brain.approval_gateway import router as approval_router
 app.include_router(approval_router)
+=======
+>>>>>>> Stashed changes
