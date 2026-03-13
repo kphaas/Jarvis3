@@ -1,6 +1,7 @@
 import asyncpg
+from brain.secrets import get_secret
 
-DB_DSN = "postgresql://jarvis:jarvisdb@localhost:5432/jarvis"
+DB_DSN = f"postgresql://jarvis:{get_secret("POSTGRES_PASSWORD")}@localhost:5432/jarvis"
 
 COST_PER_TOKEN = {
     "claude/claude-haiku-4-5-20251001":   {"in": 0.000001, "out": 0.000005},

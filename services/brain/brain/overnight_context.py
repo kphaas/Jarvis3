@@ -2,11 +2,12 @@ from fastapi import APIRouter
 import psycopg2
 import os
 from datetime import datetime
+from brain.secrets import get_secret
 
 router = APIRouter()
 
 def get_conn():
-    return psycopg2.connect("host=localhost port=5432 dbname=jarvis user=jarvis password=jarvisdb")
+    return psycopg2.connect(f"host=localhost port=5432 dbname=jarvis user=jarvis password={get_secret("POSTGRES_PASSWORD")}")
 
 @router.get("/v1/overnight/claude_md")
 def build_claude_md():

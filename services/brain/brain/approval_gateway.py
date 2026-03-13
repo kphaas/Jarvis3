@@ -6,10 +6,11 @@ import psycopg2.extras
 import httpx
 import os
 from datetime import datetime, timezone
+from brain.secrets import get_secret
 
 router = APIRouter()
 
-DSN = "postgresql://jarvis:jarvisdb@localhost:5432/jarvis"
+DSN = f"postgresql://jarvis:{get_secret("POSTGRES_PASSWORD")}@localhost:5432/jarvis"
 TIER_REVIEW_DAYS = {0: None, 1: 5, 2: 30, 3: 90, 4: 365}
 TIER_NAMES = {0: "Unverified", 1: "Provisional", 2: "Trusted", 3: "Established", 4: "Permanent"}
 

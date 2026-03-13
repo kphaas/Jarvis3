@@ -5,10 +5,11 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from sentence_transformers import SentenceTransformer
+from brain.secrets import get_secret
 
 logger = logging.getLogger(__name__)
 
-DB_DSN = "host=localhost port=5432 dbname=jarvis user=jarvis password=jarvisdb"
+DB_DSN = f"host=localhost port=5432 dbname=jarvis user=jarvis password={get_secret("POSTGRES_PASSWORD")}"
 
 
 def _get_conn_for_user(user_id: str):

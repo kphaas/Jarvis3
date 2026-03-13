@@ -1,9 +1,10 @@
 import asyncpg
 from fastapi import APIRouter
 from datetime import datetime, timezone
+from brain.secrets import get_secret
 
 router = APIRouter()
-DB_DSN = "postgresql://jarvis:jarvisdb@localhost:5432/jarvis"
+DB_DSN = f"postgresql://jarvis:{get_secret("POSTGRES_PASSWORD")}@localhost:5432/jarvis"
 
 @router.get("/v1/costs")
 async def get_costs():
