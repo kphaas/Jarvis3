@@ -793,6 +793,22 @@ function SummaryTab({ data, errors }) {
 // ── HEALTH TAB ─────────────────────────────────────────────────────────────────
 function HealthTab({ data, errors }) {
   const [restarting, setRestarting] = useState({});
+  const [systemHealth, setSystemHealth] = useState(null);
+  const [checking, setChecking] = useState(false);
+
+  const runHealthCheck = async () => {
+    setChecking(true);
+    try {
+      const res = await fetch(`${BRAIN}/v1/system/health`);
+      const json = await res.json();
+      setSystemHealth(json);
+    } catch (e) {
+      setSystemHealth({ overall_status: 'error', services: [], error: e.message });
+    }
+    setChecking(false);
+  };
+
+  useEffect(() => { runHealthCheck(); }, []);
 
   const nodes = [
     { key: "brain",    label: "BRAIN",    host: "100.64.166.22", port: 8182, metrics: data?.brainMetrics, err: errors.brainMetrics },
@@ -808,6 +824,52 @@ function HealthTab({ data, errors }) {
 
   return (
     <div className="fade-up" style={{ display: "grid", gap: 16 }}>
+      <Card status={systemHealth?.overall_status === 'healthy' ? 'ok' : systemHealth?.overall_status === 'degraded' ? 'warn' : 'error'}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <SectionLabel>🩺 System Health Check</SectionLabel>
+          <ActionBtn onClick={runHealthCheck} loading={checking} size="sm">
+            {checking ? "Checking..." : "Run Check"}
+          </ActionBtn>
+        </div>
+        {systemHealth ? (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, padding: "12px 16px", background: C.surface, borderRadius: 10 }}>
+              <span style={{ fontSize: 24 }}>
+                {systemHealth.overall_status === 'healthy' ? '✅' : systemHealth.overall_status === 'degraded' ? '⚠️' : '❌'}
+              </span>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: systemHealth.overall_status === 'healthy' ? C.green : systemHealth.overall_status === 'degraded' ? C.amber : C.red, textTransform: 'uppercase', fontFamily: "'Syne', sans-serif" }}>
+                  {systemHealth.overall_status}
+                </div>
+                <div style={{ fontSize: 11, color: C.muted, fontFamily: "'DM Mono', monospace" }}>
+                  {systemHealth.services?.length || 0} services monitored
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
+              {systemHealth.services?.map((svc, i) => (
+                <div key={i} style={{
+                  padding: "10px 12px", background: C.surface,
+                  border: `1px solid ${svc.status === 'healthy' ? C.green + '33' : svc.status === 'degraded' ? C.amber + '33' : C.red + '33'}`,
+                  borderRadius: 8,
+                  display: "flex", alignItems: "center", gap: 10,
+                }}>
+                  <span style={{ fontSize: 16 }}>
+                    {svc.status === 'healthy' ? '✓' : svc.status === 'degraded' ? '⚠' : '✗'}
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: C.text }}>{svc.label}</div>
+                    <div style={{ fontSize: 9, color: C.muted, fontFamily: "'DM Mono', monospace" }}>{svc.message}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div style={{ textAlign: "center", padding: 24, color: C.muted }}>Click "Run Check" to scan all services</div>
+        )}
+      </Card>
+
       {nodes.map(node => {
         const m  = node.metrics;
         const ok = m && !node.err;

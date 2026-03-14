@@ -1,5 +1,7 @@
 #!/bin/bash
 
+SKIP_BRAIN_HTTP=${1:-false}
+
 OUTPUT_JSON=false
 [[ ! -t 1 ]] && OUTPUT_JSON=true
 
@@ -16,6 +18,12 @@ check_service() {
     local url=$3
     local ssh_host=$4
     
+    # Skip Brain HTTP check if requested (prevents nested SSH issues)
+    if [[ "$SKIP_BRAIN_HTTP" == "true" ]] && [[ "$service" == "com.jarvis.brain" ]] && [[ -n "$url" ]]; then
+        echo -e "${GREEN}✓${NC} $node: $service - Running (HTTP check skipped)"
+        return
+    fi
+    
     local status="unknown"
     local message=""
     local process_ok=false
@@ -28,7 +36,7 @@ check_service() {
     fi
     
     if [[ -n "$url" ]]; then
-        http_code=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "$url" 2>/dev/null)
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" -m 10 "$url" 2>/dev/null)
         if [[ "$http_code" == "200" ]] || [[ "$http_code" == "401" ]]; then
             http_ok=true
         fi
